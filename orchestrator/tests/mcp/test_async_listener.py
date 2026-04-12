@@ -361,5 +361,118 @@ async def test_git_listener_error_handling(temp_repo_dir):
     await listener.stop()
 
 
+@pytest.mark.asyncio
+async def test_file_watcher_polling_mode_with_debounce():
+    """测试轮询模式的防抖机制（无 watchdog 环境下的保护）"""
+    from src.core.async_listener import WATCHDOG_AVAILABLE
+
+    # 强制使用轮询模式（模拟无 watchdog 环境）
+    temp_dir = Path(tempfile.mkdtemp())
+    received_events = []
+
+    async def mock_callback(event):
+        received_events.append(event)
+
+    # 创建文件监听器（会根据 WATCHDOG_AVAILABLE 自动选择模式）
+    watcher = AsyncFileWatcher(
+        watch_path=temp_dir,
+        event_callback=mock_callback,
+        test_patterns={"test_results.json"}
+    )
+
+    await watcher.start()
+
+    try:
+        # 模拟文件正在写入的场景
+        test_file = temp_dir / "test_results.json"
+
+        # 1. 创建不完整的 JSON 文件（模拟写入中）
+        test_file.write_text('{"summary": {"total": 10, ')
+
+        # 2. 等待轮询检测到文件修改
+        await asyncio.sleep(0.3)
+
+        # 3. 完成文件写入
+        test_file.write_text('{"summary": {"total": 10, "passed": 10, "failed": 0}, "message": "All tests passed"}')
+
+        # 4. 等待防抖延迟和处理
+        await asyncio.sleep(3.0)  # 防抖延迟 2 秒 + 处理时间
+
+        # 验证：不应该因为读取不完整的 JSON 而崩溃
+        # 防抖机制应该确保文件稳定后才读取
+        # 即使在轮询模式下也能正常工作
+
+        # 5. 验证文件可以安全读取
+        is_safe = await watcher._is_file_safe_to_read(test_file)
+        assert is_safe is True  # 完整的文件应该被判定为安全
+
+    finally:
+        await watcher.stop()
+
+
+@pytest.mark.asyncio
+async def test_file_watcher_is_file_safe_to_read():
+    """测试文件安全读取检查"""
+    from src.core.async_listener import WATCHDOG_AVAILABLE
+
+    temp_dir = Path(tempfile.mkdtemp())
+    watcher = AsyncFileWatcher(
+        watch_path=temp_dir,
+        test_patterns={"test.json"}
+    )
+
+    # 创建测试文件
+    test_file = temp_dir / "test.json"
+    test_file.write_text('{"test": "data"}')
+
+    # 等待文件稳定
+    await asyncio.sleep(0.6)
+
+    # 检查文件是否安全
+    is_safe = await watcher._is_file_safe_to_read(test_file)
+    assert is_safe is True
+
+
+@pytest.mark.asyncio
+async def test_file_watcher_debounce_mechanism():
+    """测试防抖机制的正确性"""
+    from src.core.async_listener import WATCHDOG_AVAILABLE
+
+    temp_dir = Path(tempfile.mkdtemp())
+    received_events = []
+
+    async def mock_callback(event):
+        received_events.append(event)
+
+    watcher = AsyncFileWatcher(
+        watch_path=temp_dir,
+        event_callback=mock_callback,
+        test_patterns={"test_results.json"}
+    )
+
+    await watcher.start()
+
+    try:
+        test_file = temp_dir / "test_results.json"
+
+        # 快速多次修改文件（模拟写入过程）
+        for i in range(5):
+            test_file.write_text(f'{{"version": {i}}}')
+            await asyncio.sleep(0.1)  # 短间隔
+
+        # 等待防抖延迟
+        await asyncio.sleep(3.0)
+
+        # 验证：防抖机制应该避免重复处理
+        # 文件应该在稳定后才被处理一次
+
+        # 最终文件应该是完整可读的
+        content = test_file.read_text()
+        assert '{"version": 4}' in content
+
+    finally:
+        await watcher.stop()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

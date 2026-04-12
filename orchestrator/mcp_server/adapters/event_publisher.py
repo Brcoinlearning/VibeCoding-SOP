@@ -36,6 +36,9 @@ class MCPEventPublisher:
         self._settings = get_settings()
         self._pending_events: dict[str, asyncio.Event] = {}
 
+        # 从配置读取默认超时值（解决硬编码超时问题）
+        self._default_timeout = float(self._settings.event_publish_timeout)
+
     async def publish_build_event(
         self,
         task_id: str,
@@ -44,7 +47,7 @@ class MCPEventPublisher:
         diff_summary: Optional[str] = None,
         changed_files: Optional[list[str]] = None,
         wait_for_processing: bool = True,
-        timeout: float = 30.0
+        timeout: Optional[float] = None
     ) -> dict[str, Any]:
         """
         发布构建完成事件
@@ -61,6 +64,9 @@ class MCPEventPublisher:
         Returns:
             发布结果
         """
+        # 使用配置的默认超时值（如果没有提供）
+        actual_timeout = timeout if timeout is not None else self._default_timeout
+
         event = BuildCompletedEvent(
             task_id=task_id,
             commit_hash=commit_hash,
@@ -85,13 +91,13 @@ class MCPEventPublisher:
                 try:
                     await asyncio.wait_for(
                         self._pending_events[wait_key].wait(),
-                        timeout=timeout
+                        timeout=actual_timeout
                     )
                     logger.info(f"Build event processing completed for task {task_id}")
                 except asyncio.TimeoutError:
                     logger.warning(
                         f"Build event processing timeout for task {task_id} "
-                        f"after {timeout}s"
+                        f"after {actual_timeout}s"
                     )
                 finally:
                     self._pending_events.pop(wait_key, None)
@@ -121,7 +127,7 @@ class MCPEventPublisher:
         test_summary: str,
         coverage_percent: Optional[float] = None,
         wait_for_processing: bool = True,
-        timeout: float = 30.0
+        timeout: Optional[float] = None
     ) -> dict[str, Any]:
         """
         发布测试完成事件
@@ -139,6 +145,9 @@ class MCPEventPublisher:
         Returns:
             发布结果
         """
+        # 使用配置的默认超时值（如果没有提供）
+        actual_timeout = timeout if timeout is not None else self._default_timeout
+
         event = TestCompletedEvent(
             task_id=task_id,
             passed=passed,
@@ -164,13 +173,13 @@ class MCPEventPublisher:
                 try:
                     await asyncio.wait_for(
                         self._pending_events[wait_key].wait(),
-                        timeout=timeout
+                        timeout=actual_timeout
                     )
                     logger.info(f"Test event processing completed for task {task_id}")
                 except asyncio.TimeoutError:
                     logger.warning(
                         f"Test event processing timeout for task {task_id} "
-                        f"after {timeout}s"
+                        f"after {actual_timeout}s"
                     )
                 finally:
                     self._pending_events.pop(wait_key, None)
@@ -200,7 +209,7 @@ class MCPEventPublisher:
         critical_issues: int,
         review_report_path: str,
         wait_for_processing: bool = True,
-        timeout: float = 30.0
+        timeout: Optional[float] = None
     ) -> dict[str, Any]:
         """
         发布审查完成事件
@@ -218,6 +227,9 @@ class MCPEventPublisher:
         Returns:
             发布结果
         """
+        # 使用配置的默认超时值（如果没有提供）
+        actual_timeout = timeout if timeout is not None else self._default_timeout
+
         event = ReviewCompletedEvent(
             task_id=task_id,
             reviewer_id=reviewer_id,
@@ -243,13 +255,13 @@ class MCPEventPublisher:
                 try:
                     await asyncio.wait_for(
                         self._pending_events[wait_key].wait(),
-                        timeout=timeout
+                        timeout=actual_timeout
                     )
                     logger.info(f"Review event processing completed for task {task_id}")
                 except asyncio.TimeoutError:
                     logger.warning(
                         f"Review event processing timeout for task {task_id} "
-                        f"after {timeout}s"
+                        f"after {actual_timeout}s"
                     )
                 finally:
                     self._pending_events.pop(wait_key, None)
@@ -314,7 +326,7 @@ def register_event_publisher_tools(server: Server) -> None:
                 diff_summary=arguments.get("diff_summary"),
                 changed_files=arguments.get("changed_files"),
                 wait_for_processing=arguments.get("wait_for_processing", True),
-                timeout=arguments.get("timeout", 30.0)
+                timeout=arguments.get("timeout")  # 不再有硬编码默认值，使用配置的默认值
             )
 
             return [TextContent(
@@ -343,7 +355,7 @@ def register_event_publisher_tools(server: Server) -> None:
                 test_summary=arguments["test_summary"],
                 coverage_percent=arguments.get("coverage_percent"),
                 wait_for_processing=arguments.get("wait_for_processing", True),
-                timeout=arguments.get("timeout", 30.0)
+                timeout=arguments.get("timeout")  # 不再有硬编码默认值，使用配置的默认值
             )
 
             return [TextContent(
@@ -395,7 +407,7 @@ def register_event_publisher_tools(server: Server) -> None:
                 },
                 "timeout": {
                     "type": "number",
-                    "description": "Timeout in seconds (default: 30.0)"
+                    "description": "Timeout in seconds (default: uses config value, 300s = 5 minutes)"
                 }
             },
             "required": ["task_id", "commit_hash", "branch"]
@@ -438,7 +450,7 @@ def register_event_publisher_tools(server: Server) -> None:
                 },
                 "timeout": {
                     "type": "number",
-                    "description": "Timeout in seconds (default: 30.0)"
+                    "description": "Timeout in seconds (default: uses config value, 300s = 5 minutes)"
                 }
             },
             "required": ["task_id", "passed", "total_tests", "failed_tests", "test_summary"]

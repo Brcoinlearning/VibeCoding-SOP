@@ -20,6 +20,7 @@ from src.config.settings import get_settings
 from src.core.event_bus import EventBus, get_event_bus
 from src.core.context_queue import get_context_queue_manager
 from src.core.async_listener import get_background_listener_manager
+from src.core.agent_lifecycle_blocking import get_lifecycle_manager
 from src.utils.logger import setup_logging
 
 # 初始化
@@ -28,6 +29,7 @@ settings = get_settings()
 event_bus: EventBus = get_event_bus()
 context_queue_manager = get_context_queue_manager()
 background_listener_manager = get_background_listener_manager()
+lifecycle_manager = get_lifecycle_manager()  # 使用阻塞版本的生命周期管理器
 
 # 创建 MCP 服务器
 server = Server("sop-orchestrator")
@@ -45,6 +47,9 @@ async def main():
 
     # 启动后台监听器管理器
     await background_listener_manager.start()
+
+    # 启动 Agent 生命周期管理器
+    await lifecycle_manager.start()
 
     # 设置后台监听器（从配置读取）
     if hasattr(settings, 'base_path'):
@@ -76,6 +81,9 @@ async def main():
     )
     from mcp_server.adapters.event_publisher import register_event_publisher_tools
     from mcp_server.tools.context_tools import register_context_tools
+    # 注意：lifecycle_tools 已被 blocking_tools 替代，不再注册
+    # from mcp_server.tools.lifecycle_tools import register_lifecycle_tools
+    from mcp_server.tools.blocking_tools import register_blocking_tools
 
     # 注册所有工具
     register_review_workflow(server)
@@ -84,9 +92,12 @@ async def main():
     register_get_summary(server)
     register_event_publisher_tools(server)
     register_context_tools(server)
+    # 不再注册 lifecycle_tools，避免与 blocking_tools 冲突
+    # register_lifecycle_tools(server)
+    register_blocking_tools(server)  # 真正的阻塞工具（替代 lifecycle_tools）
 
     logger.info("MCP Server tools registered successfully")
-    logger.info(f"Event-driven components started: EventBus, ContextQueue, BackgroundListeners")
+    logger.info(f"Event-driven components started: EventBus, ContextQueue, BackgroundListeners, BlockingLifecycleManager")
 
     # 启动 stdio 服务器
     try:
@@ -101,6 +112,7 @@ async def main():
         logger.info("Shutting down event-driven components...")
         await background_listener_manager.stop()
         await context_queue_manager.stop()
+        await lifecycle_manager.stop()
         await event_bus.stop()
         logger.info("MCP Server shutdown complete")
 

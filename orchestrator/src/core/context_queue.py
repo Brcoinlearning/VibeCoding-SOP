@@ -52,7 +52,8 @@ class ContextQueue:
         self,
         role: AgentRole,
         max_size: int = 100,
-        persist_path: Optional[Path] = None
+        persist_path: Optional[Path] = None,
+        auto_recover: bool = True
     ):
         """
         初始化上下文队列
@@ -61,6 +62,7 @@ class ContextQueue:
             role: Agent 角色
             max_size: 队列最大大小
             persist_path: 持久化路径（可选）
+            auto_recover: 是否自动从持久化文件恢复（默认 True）
         """
         self.role = role
         self._queue: asyncio.Queue[ContextMessage] = asyncio.Queue(maxsize=max_size)
@@ -68,10 +70,15 @@ class ContextQueue:
         self._persist_path = persist_path
         self._message_history: list[ContextMessage] = []
         self._lock = asyncio.Lock()
+        self._recovered = False
+
+        # 自动从持久化恢复（同步方法）
+        if auto_recover and persist_path:
+            self._recover_from_persistence_sync()
 
     async def put(self, message: ContextMessage) -> bool:
         """
-        放入消息
+        放入消息（非阻塞，队列满时返回 False）
 
         Args:
             message: 上下文消息
@@ -80,7 +87,8 @@ class ContextQueue:
             是否成功放入
         """
         try:
-            await self._queue.put(message)
+            # 使用 put_nowait 避免阻塞，队列满时抛出 QueueFull
+            self._queue.put_nowait(message)
             logger.info(
                 f"Message put into {self.role.value} queue: "
                 f"{message.message_type} for task {message.task_id}"
@@ -192,6 +200,187 @@ class ContextQueue:
                 f.write(message.model_dump_json() + "\n")
         except Exception as e:
             logger.error(f"Failed to persist message: {e}", exc_info=True)
+
+    def _recover_from_persistence_sync(self) -> None:
+        """
+        从持久化文件恢复队列状态（同步版本，在 __init__ 中调用）
+
+        这个方法解决了"失忆症"问题：
+        - 读取持久化文件中的消息
+        - 将未处理的消息重新放入队列
+        - 防止进程重启后数据丢失
+        """
+        if not self._persist_path:
+            return
+
+        try:
+            file_path = self._persist_path / f"{self.role.value}_messages.jsonl"
+
+            if not file_path.exists():
+                logger.debug(f"No persistence file found for {self.role.value} queue")
+                return
+
+            # 读取所有持久化的消息
+            recovered_messages = []
+            with open(file_path, "r", encoding="utf-8") as f:
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    try:
+                        # 解析 JSON 并重建消息对象
+                        message_data = json.loads(line)
+
+                        # 处理时间戳字符串转换
+                        if "timestamp" in message_data and isinstance(message_data["timestamp"], str):
+                            message_data["timestamp"] = datetime.fromisoformat(message_data["timestamp"])
+
+                        # 处理枚举类型
+                        if "from_role" in message_data and isinstance(message_data["from_role"], str):
+                            message_data["from_role"] = AgentRole(message_data["from_role"])
+                        if "to_role" in message_data and isinstance(message_data["to_role"], str):
+                            message_data["to_role"] = AgentRole(message_data["to_role"])
+
+                        message = ContextMessage(**message_data)
+                        recovered_messages.append(message)
+
+                    except (json.JSONDecodeError, ValueError, TypeError) as e:
+                        logger.error(
+                            f"Failed to parse persisted message at line {line_num}: {e}"
+                        )
+                        continue
+
+            if not recovered_messages:
+                logger.debug(f"No valid messages to recover for {self.role.value} queue")
+                return
+
+            # 将恢复的消息放入队列
+            recovered_count = 0
+            for message in recovered_messages:
+                try:
+                    # 使用 put_nowait 避免阻塞初始化
+                    self._queue.put_nowait(message)
+                    recovered_count += 1
+
+                    # 同时恢复到历史记录
+                    self._message_history.append(message)
+
+                except asyncio.QueueFull:
+                    logger.warning(
+                        f"Queue full during recovery, dropping message {message.id}"
+                    )
+                    # 继续处理下一个消息
+                    continue
+
+            self._recovered = True
+            logger.info(
+                f"Recovered {recovered_count}/{len(recovered_messages)} messages "
+                f"for {self.role.value} queue from {file_path}"
+            )
+
+            # 备份旧的持久化文件（避免重复恢复）
+            backup_path = file_path.with_suffix(f".jsonl.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+            try:
+                import shutil
+                shutil.copy2(file_path, backup_path)
+                logger.debug(f"Backed up persistence file to {backup_path}")
+            except Exception as e:
+                logger.warning(f"Failed to backup persistence file: {e}")
+
+        except Exception as e:
+            logger.error(
+                f"Error during recovery for {self.role.value} queue: {e}",
+                exc_info=True
+            )
+
+    async def recover_from_persistence_async(self) -> int:
+        """
+        异步版本的恢复方法，可以手动调用
+
+        Returns:
+            恢复的消息数量
+        """
+        if not self._persist_path:
+            return 0
+
+        try:
+            file_path = self._persist_path / f"{self.role.value}_messages.jsonl"
+
+            if not file_path.exists():
+                return 0
+
+            recovered_count = 0
+            with open(file_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    try:
+                        message_data = json.loads(line)
+
+                        # 处理时间戳字符串转换
+                        if "timestamp" in message_data and isinstance(message_data["timestamp"], str):
+                            message_data["timestamp"] = datetime.fromisoformat(message_data["timestamp"])
+
+                        # 处理枚举类型
+                        if "from_role" in message_data and isinstance(message_data["from_role"], str):
+                            message_data["from_role"] = AgentRole(message_data["from_role"])
+                        if "to_role" in message_data and isinstance(message_data["to_role"], str):
+                            message_data["to_role"] = AgentRole(message_data["to_role"])
+
+                        message = ContextMessage(**message_data)
+                        await self._queue.put(message)
+                        recovered_count += 1
+
+                    except (json.JSONDecodeError, ValueError, TypeError, asyncio.QueueFull) as e:
+                        logger.error(f"Failed to recover message: {e}")
+                        continue
+
+            logger.info(f"Async recovery completed: {recovered_count} messages recovered")
+            return recovered_count
+
+        except Exception as e:
+            logger.error(f"Error during async recovery: {e}", exc_info=True)
+            return 0
+
+    async def backup_and_clear_persistence(self) -> None:
+        """
+        备份并清空持久化文件
+
+        用于定期维护，防止持久化文件无限增长
+        """
+        if not self._persist_path:
+            return
+
+        try:
+            file_path = self._persist_path / f"{self.role.value}_messages.jsonl"
+
+            if not file_path.exists():
+                return
+
+            # 备份
+            backup_path = file_path.with_suffix(
+                f".jsonl.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            )
+            import shutil
+            shutil.copy2(file_path, backup_path)
+
+            # 清空原文件
+            with open(file_path, "w") as f:
+                pass  # 清空文件
+
+            logger.info(
+                f"Backed up {file_path} to {backup_path} and cleared original"
+            )
+
+        except Exception as e:
+            logger.error(f"Error during backup and clear: {e}", exc_info=True)
+
+    def is_recovered(self) -> bool:
+        """是否已从持久化恢复"""
+        return self._recovered
 
 
 class ContextQueueManager:

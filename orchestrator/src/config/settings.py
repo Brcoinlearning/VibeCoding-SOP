@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     event_queue_size: int = 1000
     event_processing_timeout: int = 300  # 秒
 
+    # 事件发布配置（解决硬编码超时问题）
+    event_publish_timeout: int = 300  # 默认 5 分钟，适应长耗时任务
+    event_publish_retry_count: int = 3  # 发布失败重试次数
+    event_publish_retry_delay: int = 5  # 重试延迟（秒）
+
     # 证据收集配置
     max_diff_size: int = 50000  # 字符数
     max_log_lines: int = 1000

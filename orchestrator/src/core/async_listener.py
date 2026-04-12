@@ -227,6 +227,10 @@ class FileWatchHandler(FileSystemEventHandler if WATCHDOG_AVAILABLE else object)
         }
         self._event_callback = event_callback
 
+        # 文件处理防抖：避免同一文件在写入过程中被多次处理
+        self._processing_files: dict[str, asyncio.Task] = {}
+        self._file_modification_times: dict[str, float] = {}
+
     def on_created(self, event):
         """文件创建时触发"""
         if event.is_directory:
@@ -243,12 +247,117 @@ class FileWatchHandler(FileSystemEventHandler if WATCHDOG_AVAILABLE else object)
 
         if self._is_test_result_file(event.src_path):
             logger.info(f"Test result file modified: {event.src_path}")
-            asyncio.create_task(self._process_test_file(event.src_path))
+            # 使用防抖机制，避免在文件写入过程中重复触发
+            asyncio.create_task(self._process_test_file_with_debounce(event.src_path))
 
     def _is_test_result_file(self, file_path: str) -> bool:
         """判断是否为测试结果文件"""
         file_name = Path(file_path).name
         return any(pattern in file_path for pattern in self._test_patterns)
+
+    async def _process_test_file_with_debounce(self, file_path: str) -> None:
+        """
+        防抖处理测试结果文件，解决文件 I/O 竞态条件问题
+
+        问题：当大型测试框架（如 pytest）写入结果文件时，文件会被多次修改。
+        直接读取可能遇到 JSON 未完成的情况，导致解析失败。
+
+        解决方案：
+        1. 防抖：等待文件稳定（不再修改）一段时间后再处理
+        2. 文件写入完成检测：检查文件是否还在被写入
+        3. 重试机制：如果解析失败，等待后重试
+        """
+        try:
+            file_path_str = str(file_path)
+            debounce_delay = 2.0
+
+            # 记录文件修改时间（使用当前文件的实际 mtime）
+            try:
+                file_mtime = Path(file_path).stat().st_mtime
+            except FileNotFoundError:
+                logger.debug(f"File {file_path} no longer exists, skipping")
+                return
+
+            self._file_modification_times[file_path_str] = file_mtime
+
+            # 防抖延迟：等待文件稳定（2秒内没有新的修改）
+            await asyncio.sleep(debounce_delay)
+
+            # 再次检查文件是否仍在被修改（重新获取 mtime）
+            try:
+                current_mtime = Path(file_path).stat().st_mtime
+            except FileNotFoundError:
+                logger.debug(f"File {file_path} no longer exists after sleep, skipping")
+                return
+
+            # 如果文件被修改过（有其他调用更新了时间戳），跳过此次处理
+            if file_path_str in self._file_modification_times:
+                last_mod_time = self._file_modification_times[file_path_str]
+                # 如果文件的当前 mtime 与记录的不同，说明有新的修改
+                if current_mtime != last_mod_time:
+                    logger.debug(f"File {file_path} was modified during debounce, skipping")
+                    return
+
+            # 检查文件是否可以安全读取
+            if not await self._is_file_safe_to_read(file_path):
+                logger.debug(f"File {file_path} not safe to read yet, skipping")
+                return
+
+            # 尝试处理文件，带重试机制
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    event = await self._create_test_event(file_path)
+                    if event:
+                        await self._event_bus.publish(event)
+
+                        if self._event_callback:
+                            await self._event_callback(event)
+
+                        logger.info(f"Successfully processed test file: {file_path}")
+                        break
+                    else:
+                        logger.warning(f"Failed to create event from {file_path} (attempt {attempt + 1})")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(1.0)
+
+                except json.JSONDecodeError as e:
+                    logger.warning(
+                        f"JSON decode error for {file_path} (attempt {attempt + 1}/{max_retries}): {e}"
+                    )
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(2.0)
+                    else:
+                        logger.error(f"Failed to parse {file_path} after {max_retries} attempts")
+                        break
+
+                except Exception as e:
+                    logger.error(f"Error processing test file {file_path}: {e}", exc_info=True)
+                    break
+
+        except Exception as e:
+            logger.error(f"Error in debounced file processing: {e}", exc_info=True)
+
+    async def _is_file_safe_to_read(self, file_path: str) -> bool:
+        """检查文件是否可以安全读取（不再被写入）"""
+        try:
+            path = Path(file_path)
+            if not path.exists():
+                return False
+
+            # 检查文件大小是否稳定
+            size1 = path.stat().st_size
+            await asyncio.sleep(0.5)
+            size2 = path.stat().st_size
+
+            if size1 != size2:
+                return False
+
+            return True
+
+        except Exception as e:
+            logger.debug(f"Error checking if file is safe to read: {e}")
+            return False
 
     async def _process_test_file(self, file_path: str) -> None:
         """处理测试结果文件"""
@@ -459,11 +568,13 @@ class AsyncFileWatcher:
         return any(pattern in file_name for pattern in self.test_patterns)
 
     async def _process_test_file(self, file_path: Path) -> None:
-        """处理测试结果文件"""
+        """处理测试结果文件（带防抖和重试机制，解决轮询模式竞态条件）"""
         try:
-            # 复用 FileWatchHandler 的处理逻辑
             if self._use_polling:
-                # 在轮询模式下直接处理
+                # 轮询模式使用防抖处理，避免文件写入过程中的竞态条件
+                await self._process_test_file_with_debounce(file_path)
+            else:
+                # watchdog 模式直接处理（已由 FileWatchHandler 处理防抖）
                 event = await self._create_test_event(file_path)
                 if event:
                     await self._event_bus.publish(event)
@@ -472,6 +583,112 @@ class AsyncFileWatcher:
                         await self.event_callback(event)
         except Exception as e:
             logger.error(f"Error processing test file {file_path}: {e}", exc_info=True)
+
+    async def _process_test_file_with_debounce(self, file_path: Path) -> None:
+        """
+        防抖处理测试结果文件，解决轮询模式的文件 I/O 竞态条件问题
+
+        问题：轮询模式下，检测到文件修改时直接读取可能遇到：
+        1. 文件正在写入中，JSON 未完成
+        2. 大型测试结果文件写入需要时间
+        3. 解析失败导致事件丢失
+
+        解决方案：
+        1. 防抖延迟：等待文件稳定
+        2. 文件写入完成检测：检查文件大小是否稳定
+        3. 重试机制：解析失败时重试
+        """
+        try:
+            file_path_str = str(file_path)
+            debounce_delay = 2.0
+
+            # 记录文件修改时间（使用当前文件的实际 mtime）
+            try:
+                file_mtime = file_path.stat().st_mtime
+            except FileNotFoundError:
+                logger.debug(f"File {file_path} no longer exists, skipping")
+                return
+
+            self._last_modification_times[file_path_str] = file_mtime
+
+            # 防抖延迟：等待文件稳定（2秒内没有新的修改）
+            await asyncio.sleep(debounce_delay)
+
+            # 再次检查文件是否仍在被修改（重新获取 mtime）
+            try:
+                current_mtime = file_path.stat().st_mtime
+            except FileNotFoundError:
+                logger.debug(f"File {file_path} no longer exists after sleep, skipping")
+                return
+
+            # 如果文件被修改过（有其他调用更新了时间戳），跳过此次处理
+            if file_path_str in self._last_modification_times:
+                last_mod_time = self._last_modification_times[file_path_str]
+                # 如果文件的当前 mtime 与记录的不同，说明有新的修改
+                if current_mtime != last_mod_time:
+                    logger.debug(f"File {file_path} was modified during debounce, skipping")
+                    return
+
+            # 检查文件是否可以安全读取
+            if not await self._is_file_safe_to_read(file_path):
+                logger.debug(f"File {file_path} not safe to read yet, skipping")
+                return
+
+            # 尝试处理文件，带重试机制
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    event = await self._create_test_event(file_path)
+                    if event:
+                        await self._event_bus.publish(event)
+
+                        if self.event_callback:
+                            await self.event_callback(event)
+
+                        logger.info(f"Successfully processed test file: {file_path}")
+                        break
+                    else:
+                        logger.warning(f"Failed to create event from {file_path} (attempt {attempt + 1})")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(1.0)
+
+                except Exception as e:
+                    import json
+                    if isinstance(e, json.JSONDecodeError):
+                        logger.warning(
+                            f"JSON decode error for {file_path} (attempt {attempt + 1}/{max_retries}): {e}"
+                        )
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(2.0)
+                        else:
+                            logger.error(f"Failed to parse {file_path} after {max_retries} attempts")
+                            break
+                    else:
+                        logger.error(f"Error processing test file {file_path}: {e}", exc_info=True)
+                        break
+
+        except Exception as e:
+            logger.error(f"Error in debounced file processing: {e}", exc_info=True)
+
+    async def _is_file_safe_to_read(self, file_path: Path) -> bool:
+        """检查文件是否可以安全读取（不再被写入）"""
+        try:
+            if not file_path.exists():
+                return False
+
+            # 检查文件大小是否稳定
+            size1 = file_path.stat().st_size
+            await asyncio.sleep(0.5)
+            size2 = file_path.stat().st_size
+
+            if size1 != size2:
+                return False
+
+            return True
+
+        except Exception as e:
+            logger.debug(f"Error checking if file is safe to read: {e}")
+            return False
 
     async def _create_test_event(self, file_path: Path) -> Optional[TestCompletedEvent]:
         """创建测试完成事件（从 FileWatchHandler 复制的逻辑）"""
