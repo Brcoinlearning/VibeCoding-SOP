@@ -3,16 +3,16 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sop-orchestrator"
-version = "1.0.0"
-description = "软件开发SOP编排引擎 - 让SOP真正运行起来"
+name = "sop-orchestrator-mcp"
+version = "2.0.0"
+description = "软件开发SOP编排引擎 - MCP Server版本"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "Your Name", email = "your.email@example.com"}
 ]
-keywords = ["sop", "orchestrator", "workflow", "agent"]
+keywords = ["sop", "orchestrator", "workflow", "agent", "mcp"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -27,10 +27,9 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     "pyyaml>=6.0",
     "python-dotenv>=1.0.0",
-    "click>=8.1.0",
-    "rich>=13.0.0",
-    "watchdog>=3.0.0",
+    "mcp>=0.1.0",
     "aiofiles>=23.0.0",
+    "rich>=13.0.0",  # Keep for compatibility with existing code
 ]
 
 [project.optional-dependencies]
@@ -46,11 +45,11 @@ dev = [
 ]
 
 [project.scripts]
-sop-orchestrator = "src.main:cli"
+sop-orchestrator-mcp = "mcp_server.mcp_server_main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["src*"]
+include = ["src*", "mcp_server*"]
 
 [tool.black]
 line-length = 100
