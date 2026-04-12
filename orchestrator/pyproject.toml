@@ -29,7 +29,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "mcp>=0.1.0",
     "aiofiles>=23.0.0",
-    "rich>=13.0.0",  # Keep for compatibility with existing code
+    "rich>=13.0.0",  # Keep for logging compatibility
 ]
 
 [project.optional-dependencies]
