@@ -30,6 +30,7 @@ dependencies = [
     "mcp>=0.1.0",
     "aiofiles>=23.0.0",
     "rich>=13.0.0",  # Keep for logging compatibility
+    "watchdog>=4.0.0",  # File system monitoring for async listeners
 ]
 
 [project.optional-dependencies]
