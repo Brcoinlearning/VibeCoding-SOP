@@ -3,6 +3,7 @@
 
 # Local tool state
 .claude/
+.worktrees/
 
 # Python caches and virtual envs
 **/__pycache__/
