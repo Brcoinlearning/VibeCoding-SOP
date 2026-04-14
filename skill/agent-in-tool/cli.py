@@ -20,9 +20,6 @@ from scripts.requirements_orchestrator import (
     init_requirements_state,
     mark_requirements_stage,
 )
-from scripts.requirements_subagent_dispatcher import (
-    dispatch_requirements_phase,
-)
 from scripts.runtime import (
     skill_forge_contract,
     skill_tdd_enforcer,
@@ -84,12 +81,6 @@ def main() -> None:
     p_req_handoff.add_argument("task_id")
     p_req_handoff.add_argument("--workspace", default=".")
     p_req_handoff.add_argument("--force", action="store_true")
-
-    p_req_dispatch = sub.add_parser("req-dispatch", help="多Agent调度：执行完整需求分析阶段")
-    p_req_dispatch.add_argument("task_id")
-    p_req_dispatch.add_argument("raw_requirement")
-    p_req_dispatch.add_argument("--workspace", default=".")
-    p_req_dispatch.add_argument("--api-key", default=None)
 
     p_dev_init = sub.add_parser("dev-init", help="初始化开发流程总控状态")
     p_dev_init.add_argument("task_id")
@@ -232,16 +223,6 @@ def main() -> None:
 
     if args.command == "req-handoff":
         result = create_requirements_handoff(args.task_id, args.workspace, force=args.force)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-        return
-
-    if args.command == "req-dispatch":
-        result = asyncio.run(dispatch_requirements_phase(
-            task_id=args.task_id,
-            raw_requirement=args.raw_requirement,
-            workspace=args.workspace,
-            api_key=args.api_key
-        ))
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return
 

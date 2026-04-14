@@ -1,2 +1,1 @@
-anthropic>=0.18.0
 filelock>=3.13.0

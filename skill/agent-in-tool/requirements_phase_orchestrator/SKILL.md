@@ -1,208 +1,289 @@
 ---
 name: requirements-phase-orchestrator
-description: Use when starting requirements analysis phase to orchestrate multi-agent workflow with isolated sub-agents for boundary convergence, architecture decomposition, and contract solidification to avoid context accumulation and hallucinations.
+description: Use when starting requirements analysis phase to orchestrate multi-agent workflow with isolated sub-agents. Each sub-agent calls specific skills (reverse-interviewing, architecture-patterns, tdd) while orchestrator defines input/output specifications and validates artifacts.
 ---
 
-# SOP Requirements Phase Orchestrator (多 Agent 版本)
+# Requirements Phase Orchestrator (主控 Agent)
 
-需求分析阶段总控 Skill，使用**多 Agent 架构**避免上下文累积和幻觉。
+需求分析阶段主控 Agent，负责编排子 Agent 调用具体 skills，定义输入输出规范，并验收产物。
 
-## 🏗️ 多 Agent 架构
+## 🎯 核心职责
 
-**传统单 Agent 问题**：
-- 上下文窗口压力过大
-- 前面阶段的信息可能被遗忘
-- 容易产生幻觉
-- 难以追溯问题
+### 主控 Agent 职责
+1. **定义规范**：定义每个阶段的输入输出规范
+2. **启动子 Agent**：使用 Task 工具创建专门的子 Agent
+3. **验收结果**：检查产物是否符合规范
+4. **数据流转**：将前一阶段的输出传递给后一阶段
+5. **错误处理**：如果不符合规范，要求重新执行
+6. **最终汇报**：汇总所有产物，向用户汇报
 
-**多 Agent 解决方案**：
+### 子 Agent 职责
+1. **调用 skill**：使用 Skill 工具调用指定的 skill
+2. **监控执行**：观察 skill 的执行过程
+3. **结果传递**：将 skill 的输出返回给主控
+4. **不做判断**：不自己判断产物质量，只负责传递
+
+### Skill 职责
+1. **具体任务**：执行具体的需求分析任务
+2. **生成产物**：生成符合规范的输出产物
+3. **用户交互**：与用户进行必要的交互
+
+## 📋 阶段流程
+
+### 阶段 1：边界收敛 (req-boundary)
+
+#### 输入输出规范
+- **输入**：raw_requirement (string) - 用户的原始需求描述
+- **输出**：business_rules_memo (markdown) - 《业务规则备忘录》
+
+#### 调用 skill
+- **skill 名称**：reverse-interviewing
+- **skill 作用**：通过提问消除需求模糊地带
+
+#### 验收标准
+产物必须包含：
+- ✅ 核心概念定义
+- ✅ 目标用户描述
+- ✅ 核心价值说明
+- ✅ 边界条件说明
+- ✅ 非功能需求（性能、安全、可用性）
+- ✅ 异常处理说明
+
+#### 执行方式
+
+**第一步：向用户说明即将开始的阶段**
+
 ```
-主控 Agent (Orchestrator)
-    │
-    ├──> 子 Agent 1 (边界收敛) ──> 独立 LLM 会话
-    │         └─> 返回极简结果
-    │
-    ├──> 子 Agent 2 (架构拆解) ──> 独立 LLM 会话
-    │         └─> 返回极简结果
-    │
-    └──> 子 Agent 3 (契约固化) ──> 独立 LLM 会话
-              └─> 返回极简结果
+📋 阶段 1/3：边界收敛
+
+目标：将你的原始需求转化为清晰的业务规则
+
+即将启动专门的子 Agent 来调用 reverse-interviewing skill。
+该 skill 会通过提问的方式消除需求中的模糊地带。
 ```
 
-**优势**：
-- ✅ 上下文隔离 - 每个 Agent 只处理自己的任务
-- ✅ 状态管理集中 - 主控 Agent 负责流程编排
-- ✅ 降低幻觉风险 - 独立 LLM 会话避免上下文污染
-- ✅ 可追溯性 - 每个阶段产物独立保存
+**第二步：启动子 Agent**
 
-## 触发条件
+使用 Task 工具创建子 Agent：
 
-当以下情况时使用此技能：
-- 用户提出新的 Feature 想法，需要开始需求分析
-- 需要进行需求收敛、架构拆解、契约固化
-- 需要生成需求到开发的交接产物
+```
+subagent_type: "general-purpose"
+prompt: """
+你是 skill 调用专家，负责调用 reverse-interviewing skill。
 
-## 阶段流程
+**你的任务**：
+1. 向用户说明：即将开始边界收敛分析
+2. 调用 reverse-interviewing skill
+3. 确保 skill 生成《业务规则备忘录》
+4. 将备忘录的完整内容返回给我
 
-### 阶段 1：收敛边界 (req-boundary)
-**子 Agent 任务**：
-- 深度提问消除模糊地带
-- 识别核心概念、目标用户、核心价值
-- 分析输入/输出规格、处理逻辑
-- 探索边界条件（数据、用户、系统、环境）
-- 确认非功能需求（性能、安全、可用性）
+**用户需求**：{raw_requirement}
 
-**验收产物**：`10-requirements/{task_id}-business_rules_memo.md`
+**注意事项**：
+- 你自己不要做需求分析，让 skill 去做
+- 你自己不要生成产物，让 skill 去生成
+- 你只负责调用 skill 和传递结果
+
+请开始执行。
+"""
+```
+
+**第三步：等待子 Agent 完成**
+
+等待子 Agent 返回结果，期间用户会看到：
+- 子 Agent 与 reverse-interviewing skill 的交互
+- skill 向用户提问的过程
+- 用户回答问题的过程
+- skill 生成产物的过程
+
+**第四步：验收产物**
+
+检查子 Agent 返回的《业务规则备忘录》是否符合验收标准：
+- 如果符合 → 标记阶段完成，进入下一阶段
+- 如果不符合 → 要求子 Agent 重新调用 skill
 
 ### 阶段 2：架构拆解 (req-architecture)
-**子 Agent 任务**：
-- 分析业务规则备忘录
-- 选择架构模式（Clean Architecture, DDD 等）
-- 进行领域建模和分层设计
-- 拆解任务并创建执行计划
 
-**验收产物**：`20-planning/{task_id}-architecture_design.md`
+#### 输入输出规范
+- **输入**：business_rules_memo (markdown) - 《业务规则备忘录》
+- **输出**：architecture_design (markdown) - 架构设计文档
+
+#### 调用 skill
+- **skill 名称**：architecture-patterns
+- **skill 作用**：选择合适的架构模式并进行设计
+
+#### 验收标准
+产物必须包含：
+- ✅ 架构模式选择及理由
+- ✅ 分层设计说明
+- ✅ 领域模型定义
+- ✅ 任务拆解列表
+- ✅ 技术栈选择
+
+#### 执行方式
+
+**第一步：向用户说明即将开始的阶段**
+
+```
+📋 阶段 2/3：架构拆解
+
+目标：基于业务规则进行架构设计和任务拆解
+
+《业务规则备忘录》已生成，即将启动专门的子 Agent 来调用 architecture-patterns skill。
+```
+
+**第二步：启动子 Agent**
+
+使用 Task 工具创建子 Agent：
+
+```
+subagent_type: "general-purpose"
+prompt: """
+你是 skill 调用专家，负责调用 architecture-patterns skill。
+
+**你的任务**：
+1. 向用户说明：即将开始架构设计
+2. 调用 architecture-patterns skill
+3. 确保 skill 生成架构设计文档
+4. 将设计文档的完整内容返回给我
+
+**业务规则备忘录**：
+{business_rules_memo}
+
+**注意事项**：
+- 你自己不要设计架构，让 skill 去做
+- 你自己不要生成文档，让 skill 去生成
+- 你只负责调用 skill 和传递结果
+
+请开始执行。
+"""
+```
+
+**第三步：验收产物**
+
+检查返回的架构设计文档是否符合验收标准。
 
 ### 阶段 3：契约固化 (req-contract)
-**子 Agent 任务**：
-- 分析架构设计文档
-- 识别关键验收场景
-- 编写 Gherkin 测试用例
-- 产出测试契约
 
-**验收产物**：`20-planning/{task_id}-test_contract.md`
+#### 输入输出规范
+- **输入**：architecture_design (markdown) - 架构设计文档
+- **输出**：test_contract (markdown) - 测试契约文档
 
-## 执行方式
+#### 调用 skill
+- **skill 名称**：tdd
+- **skill 作用**：生成测试契约和 Gherkin 用例
 
-**重要**：当此技能被触发时，你必须执行以下操作：
+#### 验收标准
+产物必须包含：
+- ✅ Gherkin Feature 文件
+- ✅ 关键场景覆盖
+- ✅ 主流程、边界流、失败流
+- ✅ 可直接用于开发
 
-### 第一步：告知用户即将执行的操作
+#### 执行方式
+
+**第一步：向用户说明即将开始的阶段**
+
 ```
-🔧 正在调用 requirements-phase-orchestrator 技能...
-├─> 执行文件：scripts/requirements_subagent_dispatcher.py
-├─> 执行命令：python3 cli.py req-dispatch TASK-001 "用户的需求描述"
-└─> 预计时间：1-3 分钟（取决于需求复杂度）
-```
+📋 阶段 3/3：契约固化
 
-### 第二步：执行多 Agent 调度命令
-```bash
-cd /Users/mr.hu/Desktop/开发项目/软件开发SOP/skill/agent-in-tool
-python3 cli.py req-dispatch TASK-001 "用户的需求描述" --workspace .
-```
+目标：基于架构设计生成测试契约
 
-### 第三步：实时反馈执行进度
-在命令执行过程中，向用户报告进度：
-```
-✅ 阶段 1/3：边界收敛 (独立 LLM 会话) - 完成
-✅ 阶段 2/3：架构拆解 (独立 LLM 会话) - 进行中...
+架构设计已完成，即将启动专门的子 Agent 来调用 tdd skill。
 ```
 
-### 第四步：汇报完整结果
+**第二步：启动子 Agent**
+
+使用 Task 工具创建子 Agent：
+
+```
+subagent_type: "general-purpose"
+prompt: """
+你是 skill 调用专家，负责调用 tdd skill。
+
+**你的任务**：
+1. 向用户说明：即将开始测试契约生成
+2. 调用 tdd skill
+3. 确保 skill 生成测试契约文档
+4. 将契约文档的完整内容返回给我
+
+**架构设计文档**：
+{architecture_design}
+
+**注意事项**：
+- 你自己不要生成测试用例，让 skill 去做
+- 你自己不要编写契约，让 skill 去编写
+- 你只负责调用 skill 和传递结果
+
+请开始执行。
+"""
+```
+
+**第三步：验收产物**
+
+检查返回的测试契约文档是否符合验收标准。
+
+## 🎉 完成汇报
+
+### 所有阶段完成后
+
 向用户汇报：
-- 执行的代码文件
-- 生成的产物文件
-- 各阶段的执行状态
-- 需要用户确认或修改的地方
 
-## 透明度原则
+```
+🎉 需求分析阶段全部完成！
+
+**执行摘要**：
+- ✅ 阶段 1/3：边界收敛 → 《业务规则备忘录》
+- ✅ 阶段 2/3：架构拆解 → 《架构设计文档》
+- ✅ 阶段 3/3：契约固化 → 《测试契约文档》
+
+**生成的文件**：
+1. 10-requirements/{task_id}-business_rules_memo.md
+2. 20-planning/{task_id}-architecture_design.md
+3. 20-planning/{task_id}-test_contract.md
+
+**下一步**：
+需求分析已完成，可以进入开发阶段。
+
+开发阶段包括：
+1. 需求锻造（生成可执行契约）
+2. TDD 门禁（测试驱动开发）
+3. 独立盲审（代码审查）
+4. 发布裁决（Owner 决策）
+
+是否继续进入开发阶段？
+```
+
+## 🔍 透明度原则
 
 此技能遵循**完全透明**原则：
-- ✅ 显示执行的具体代码文件
-- ✅ 显示执行的完整命令
-- ✅ 实时反馈执行进度
-- ✅ 汇报所有生成的文件
-- ✅ 说明每个阶段的作用
+
+- ✅ 显示每个阶段的开始和结束
+- ✅ 显示子 Agent 的启动过程
+- ✅ 显示 skill 的调用过程
+- ✅ 显示产物的验收过程
+- ✅ 显示所有生成的文件
 - ✅ 提供追溯和调试的路径
 
-## CLI 命令
+## ⚠️ 错误处理
 
-### 方式一：多 Agent 自动调度（推荐）
+### 如果子 Agent 执行失败
 
-```bash
-# 一键执行完整需求分析阶段（三个子 Agent 自动调度）
-python3 cli.py req-dispatch TASK-001 "用户评论功能" --workspace .
-```
+1. 向用户说明失败原因
+2. 显示错误信息
+3. 提供重试选项
 
-**输出示例**：
-```json
-{
-  "success": true,
-  "task_id": "TASK-001",
-  "stages_completed": ["req-boundary", "req-architecture", "req-contract"],
-  "artifacts": [
-    "10-requirements/TASK-001-business_rules_memo.md",
-    "20-planning/TASK-001-architecture_design.md",
-    "20-planning/TASK-001-test_contract.md"
-  ]
-}
-```
+### 如果产物不符合验收标准
 
-### 方式二：手动分步执行
+1. 向用户说明不符合的验收标准
+2. 要求子 Agent 重新调用 skill
+3. 直到符合标准或用户确认跳过
 
-```bash
-# 初始化需求分析状态
-python3 cli.py req-init TASK-001 --workspace .
+## 📚 相关技能
 
-# 查看当前阶段状态
-python3 cli.py req-status TASK-001 --workspace .
+此主控 Agent 会编排以下 skills：
+- `reverse-interviewing` - 边界收敛
+- `architecture-patterns` - 架构设计
+- `tdd` - 测试契约
 
-# 标记阶段完成（在验收产物合格后）
-python3 cli.py req-mark TASK-001 req-boundary pass --workspace . --note="业务规则备忘录已生成"
-python3 cli.py req-mark TASK-001 req-architecture pass --workspace . --note="架构设计已完成"
-python3 cli.py req-mark TASK-001 req-contract pass --workspace . --note="测试契约已生成"
-
-# 生成需求到开发的交接产物
-python3 cli.py req-handoff TASK-001 --workspace .
-```
-
-### 方式三：使用外部技能（传统方式）
-
-如果你想手动使用外部技能，可以按以下流程：
-
-```bash
-# 阶段1：手动调用外部技能
-# （通过 Claude Code Skill 工具调用）
-reverse-interviewing
-interview-conducting
-elicitation-methodology
-
-# 阶段2：手动调用外部技能
-architecture-patterns
-decomposition-planning-roadmap
-
-# 阶段3：手动调用外部技能
-tdd
-```
-
-## 门禁规则
-
-1. 任一阶段未通过验收前，不允许进入下一阶段
-2. 产物不合格时，要求重新执行对应子 Agent
-3. 只有所有阶段通过后，才能执行 `req-handoff` 生成交接文件
-
-## 交接产物
-
-`req-handoff` 生成的 `requirements_handoff.json` 包含：
-- 业务规则备忘录
-- 架构设计文档
-- 测试契约文档
-- Task 执行列表
-
-此文件将被 `development_phase_orchestrator` 的 `dev-init` 命令作为承接条件。
-
-## 技术实现
-
-多 Agent 调度器使用以下技术实现上下文隔离：
-
-1. **独立 LLM 会话**：每个子 Agent 使用独立的 Anthropic API 调用
-2. **文件锁机制**：防止并发写入冲突
-3. **信息降维**：只返回极简结果给主控 Agent
-4. **产物持久化**：每个阶段的完整产物保存到文件系统
-
-## 与盲审的一致性
-
-这个多 Agent 架构与 `trigger-blind-review` 的设计理念一致：
-- 盲审：Builder Agent → 独立 Reviewer Agent → 极简结果
-- 需求分析：主控 Agent → 独立子 Agent → 极简结果
-
-两者都实现了**物理隔离**和**上下文独立**，确保高质量的执行结果。
+这些技能都有明确的输入输出规范，子 Agent 只负责调用它们。
