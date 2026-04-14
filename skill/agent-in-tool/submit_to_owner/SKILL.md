@@ -1,379 +1,147 @@
 ---
-name: submit-to-owner
-description: Use when Builder Agent receives PASS from blind review and requests human Go/No-Go decision. Displays native confirmation dialog to human owner. On Go approval, automatically commits code and routes artifacts to 50-release/ directory.
+name: sop-submit-to-owner
+description: Use only after blind review PASS to request owner Go/No-Go decision and complete release routing with git commit and archival to 50-release directory.
 ---
 
-# Submit to Owner
+# SOP Submit to Owner
 
-## Overview
+发布前的唯一裁决入口，负责 Owner 的 Go/No-Go 决策与发布归档。
 
-人类裁决工具 - 当盲审通过后，请求人类最终放行。
+## 触发条件
 
-弹出原生确认框，人类输入Go/No-Go：
-- **Go** → 自动commit并路由到 `50-release/`
-- **No-Go** → 返回给Builder继续修复
+当以下情况时使用此技能：
+- 盲审结果为 PASS
+- `40-review/{task_id}.json` 和 `40-review/{task_id}.md` 已生成
+- 准备进行最终的发布决策
 
-## When to Use
+## 调用方式
 
-```
-   Blind Review PASS
-         |
-         v
-   调用本Skill
-         |
-         v
-  人类确认框
-    /     \
-  Go     No-Go
-   |       |
-   v       v
- Commit   返回修复
-```
-
-**触发条件:**
-- `trigger_blind_review` 返回 PASS
-- 需要人类最终验收
-- 准备发布代码
-
-## Quick Reference
-
-| 功能 | 说明 |
-|------|------|
-| 交互方式 | 原生确认框 |
-| Go操作 | Git commit + 路由到50-release/ |
-| No-Go操作 | 返回Builder继续修复 |
-| 文件处理 | 自动整理发布包 |
-
-## Implementation
-
-```python
-import subprocess
-import shutil
-from pathlib import Path
-from datetime import datetime
-from typing import Dict
-
-# 原生确认框实现
-def show_confirmation_dialog(task_id: str, review_summary: str) -> bool:
-    """
-    显示原生确认框
-
-    Args:
-        task_id: 任务ID
-        review_summary: 审查摘要
-
-    Returns:
-        True (Go) / False (No-Go)
-    """
-    import tkinter as tk
-    from tkinter import messagebox
-
-    root = tk.Tk()
-    root.withdraw()  # 隐藏主窗口
-
-    title = f"代码审查通过 - {task_id}"
-    message = f"""审查已通过，是否批准发布？
-
-任务: {task_id}
-审查摘要: {review_summary}
-
-点击「是」批准发布 (Go)
-点击「否」返回修复 (No-Go)
-"""
-
-    # 置顶窗口
-    root.attributes('-topmost', True)
-    result = messagebox.askyesno(title, message)
-
-    root.destroy()
-    return result
-
-
-async def submit_to_owner(
-    task_id: str,
-    workspace_path: str = None,
-    auto_commit: bool = True
-) -> Dict:
-    """
-    提交人类裁决
-
-    Args:
-        task_id: 任务ID
-        workspace_path: 工作区路径
-        auto_commit: 是否自动commit
-
-    Returns:
-        裁决结果
-    """
-    if workspace_path is None:
-        workspace_path = "."
-
-    # 1. 读取审查报告
-    review_report = load_review_report(task_id, workspace_path)
-
-    # 2. 显示确认框
-    review_summary = format_review_summary(review_report)
-    approved = show_confirmation_dialog(task_id, review_summary)
-
-    if not approved:
-        return {
-            "status": "NO-GO",
-            "message": "❌ 人类拒绝放行。请根据反馈继续修复代码。",
-            "action": "CONTINUE_FIXING"
-        }
-
-    # 3. Go - 执行发布流程
-    if auto_commit:
-        commit_result = await commit_changes(task_id, workspace_path)
-        if not commit_result["success"]:
-            return {
-                "status": "ERROR",
-                "message": f"❌ 提交失败: {commit_result['error']}",
-                "action": "RETRY"
-            }
-
-    # 4. 路由到发布目录
-    route_result = await route_to_release(task_id, workspace_path)
-
-    return {
-        "status": "GO",
-        "message": f"✅ 代码已批准并发布到 50-release/ 目录",
-        "release_path": route_result["release_path"],
-        "commit_hash": commit_result.get("commit_hash") if auto_commit else None,
-        "action": "COMPLETED"
-    }
-
-
-def load_review_report(task_id: str, workspace: str) -> Dict:
-    """加载审查报告"""
-    import json
-
-    report_file = Path(workspace) / "40-review" / f"{task_id}.json"
-
-    if not report_file.exists():
-        return {"status": "PASS", "findings": []}
-
-    with open(report_file, 'r', encoding='utf-8') as f:
-        return json.load(f)
-
-
-def format_review_summary(report: Dict) -> str:
-    """格式化审查摘要"""
-    if report.get("status") == "PASS":
-        findings_count = len(report.get("findings", []))
-        return f"✅ 审查通过，发现 {findings_count} 个非阻断性问题"
-    else:
-        return f"⚠️ 发现 {report.get('severity', 'unknown')} 级别问题"
-
-
-async def commit_changes(task_id: str, workspace: str) -> Dict:
-    """提交代码变更"""
-    try:
-        # 添加所有变更
-        subprocess.run(
-            ["git", "add", "."],
-            cwd=workspace,
-            check=True,
-            capture_output=True
-        )
-
-        # 提交
-        commit_message = f"feat: {task_id} - Approved by owner\n\n[auto-commit from Agent-in-Tool workflow]"
-        result = subprocess.run(
-            ["git", "commit", "-m", commit_message],
-            cwd=workspace,
-            check=True,
-            capture_output=True,
-            text=True
-        )
-
-        # 获取commit hash
-        hash_result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=workspace,
-            check=True,
-            capture_output=True,
-            text=True
-        )
-
-        return {
-            "success": True,
-            "commit_hash": hash_result.stdout.strip()
-        }
-
-    except subprocess.CalledProcessError as e:
-        return {
-            "success": False,
-            "error": str(e)
-        }
-
-
-async def route_to_release(task_id: str, workspace: str) -> Dict:
-    """路由到发布目录"""
-    release_dir = Path(workspace) / "50-release"
-    release_dir.mkdir(parents=True, exist_ok=True)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    release_name = f"{task_id}_{timestamp}"
-
-    # 创建发布包
-    release_path = release_dir / release_name
-    release_path.mkdir(exist_ok=True)
-
-    # 复制代码文件
-    code_src = Path(workspace) / "src"
-    if code_src.exists():
-        shutil.copytree(code_src, release_path / "src")
-
-    # 复制审查报告
-    review_src = Path(workspace) / "40-review" / f"{task_id}.md"
-    if review_src.exists():
-        shutil.copy2(review_src, release_path / "review_report.md")
-
-    # 复制需求文档
-    requirement_src = Path(workspace) / "20-planning" / f"{task_id}.md"
-    if requirement_src.exists():
-        shutil.copy2(requirement_src, release_path / "requirement.md")
-
-    # 生成发布清单
-    manifest = {
-        "task_id": task_id,
-        "release_name": release_name,
-        "timestamp": datetime.now().isoformat(),
-        "files": list(release_path.rglob("*"))
-    }
-
-    with open(release_path / "manifest.json", 'w') as f:
-        json.dump(manifest, f, indent=2)
-
-    return {
-        "release_path": str(release_path),
-        "release_name": release_name
-    }
-```
-
-## Non-Interactive Mode
-
-对于CI/CD环境，提供非交互模式：
-
-```python
-async def submit_to_owner_non_interactive(
-    task_id: str,
-    workspace_path: str = None,
-    approval: str = "auto"  # auto | go | no-go
-) -> Dict:
-    """
-    非交互模式提交
-
-    Args:
-        approval: "auto" (自动通过), "go" (批准), "no-go" (拒绝)
-
-    Returns:
-        裁决结果
-    """
-    if approval == "no-go":
-        return {
-            "status": "NO-GO",
-            "message": "❌ 配置为拒绝放行",
-            "action": "CONTINUE_FIXING"
-        }
-
-    # auto 或 go 都执行发布
-    return await submit_to_owner(task_id, workspace_path, auto_commit=True)
-```
-
-## Standalone CLI 调用
-
+### 交互式调用（默认）
 ```bash
-# 交互式
 python3 cli.py submit-owner TASK-001 --workspace .
+```
+会提示 Owner 进行 Go/No-Go 决策。
 
-# 非交互（CI）
+### 非交互式调用（CI/CD）
+```bash
 python3 cli.py submit-owner TASK-001 --workspace . --non-interactive --approval go
 ```
+适用于自动化流程。
 
-## Complete Workflow
+## 输入参数
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Builder Agent Workflow                    │
-└─────────────────────────────────────────────────────────────┘
-                              |
-                              v
-                    read_task_contract("TASK-001")
-                              |
-                              v
-                    [读取需求文档]
-                              |
-                              v
-                    [编写代码...]
-                              |
-                              v
-                    trigger_blind_review("TASK-001")
-                              |
-        +---------------------+---------------------+
-        |                                           |
-        v                                           v
-[后台Agent-in-Tool]                        [Builder等待]
-        |                                           |
-        +-> collect_evidence()                      |
-        |                                           |
-        +-> spawn_independent_llm()                 |
-        |                                           |
-        +-> save_report(40-review/)                 |
-        |                                           |
-        v                                           v
-[返回极简结果] <-----------------------------------+
-        |
-        v
-    "❌ 审查未通过" OR "✅ 审查通过"
-        |
-        v
-submit_to_owner("TASK-001")
-        |
-        v
-[人类确认框]
-    /       \
-  Go      No-Go
-   |         |
-   v         v
-[Commit] [返回修复]
-   |
-   v
-[路由到50-release/]
-   |
-   v
-✅ 发布完成
-```
+- `task_id`: 任务编号（必填）
+- `--workspace`: 工作目录（可选，默认 "."）
+- `--non-interactive`: 非交互模式（可选）
+- `--approval`: 决策结果（可选，非交互模式下生效）
+  - `auto`: 自动决策
+  - `go`: 批准发布
+  - `no-go`: 拒绝发布
 
-## Environment Setup
+## 决策流程
+
+### Go（批准）
+1. 执行 Git 提交
+2. 归档所有产物到 `50-release/{task_id}_{timestamp}/`
+3. 生成 `manifest.json`
+4. 更新状态为 `released`
+
+### No-Go（拒绝）
+1. 返回修复流程
+2. 不进入发布目录
+3. 保持当前状态，允许修复后重新提交
+
+## 输出产物
+
+### Go 时
+- `50-release/{task_id}_{timestamp}/`
+  - 所有阶段产物（需求、规划、构建、审查）
+  - `manifest.json`（发布清单）
+  - Git 提交记录
+
+### No-Go 时
+- 返回修复建议
+- 不生成发布目录
+
+## 完整示例
 
 ```bash
-# 安装依赖
-pip install tkinter filelock
+# 交互式决策
+python3 cli.py submit-owner TASK-001 --workspace .
 
-# macOS上tkinter通常已安装
-# Linux上可能需要: sudo apt-get install python3-tk
+# 非交互式 - 批准
+python3 cli.py submit-owner TASK-001 --workspace . --non-interactive --approval go
 
-# 配置
-export GIT_AUTHOR_NAME="Agent-in-Tool Bot"
-export GIT_AUTHOR_EMAIL="bot@example.com"
+# 非交互式 - 拒绝
+python3 cli.py submit-owner TASK-001 --workspace . --non-interactive --approval no-go
 ```
 
-## Files Structure
+## 返回值
 
+### Go（批准）
+```json
+{
+  "success": true,
+  "decision": "go",
+  "task_id": "TASK-001",
+  "release_dir": "50-release/TASK-001_20250413_153000",
+  "git_commit": "abc123",
+  "manifest": "50-release/TASK-001_20250413_153000/manifest.json",
+  "artifacts": [
+    "10-requirements/TASK-001.md",
+    "20-planning/TASK-001.md",
+    "30-build/TASK-001-execution_evidence-20250413.md",
+    "40-review/TASK-001.md"
+  ]
+}
 ```
-submit_to_owner/
-├── SKILL.md                    # 本文件
-└── scripts/
-    ├── owner_dialog.py         # 确认框实现
-    ├── release_manager.py      # 发布管理
-    └── git_operations.py       # Git操作
+
+### No-Go（拒绝）
+```json
+{
+  "success": false,
+  "decision": "no-go",
+  "task_id": "TASK-001",
+  "reason": "Owner 拒绝发布",
+  "feedback": "需要修复以下问题：...",
+  "next_steps": "回到开发阶段修复问题后重新提交"
+}
 ```
 
-## Security Considerations
+## 门禁规则
 
-1. **Commit权限**: 确保当前 CLI 运行账号有 Git 仓库写入权限
-2. **文件锁**: 使用文件锁防止并发冲突
-3. **路径验证**: 验证workspace_path防止路径遍历
-4. **权限控制**: 限制release目录写入权限
+1. 盲审结果非 PASS 不得调用本技能
+2. Owner 选择 No-Go 必须回退修复，不得绕过
+3. 发布目录与 `manifest.json` 未生成视为发布失败
+
+## 发布清单 (manifest.json)
+
+```json
+{
+  "task_id": "TASK-001",
+  "release_date": "2025-04-13T15:30:00",
+  "decision": "go",
+  "stages": {
+    "requirements": "pass",
+    "forge": "pass",
+    "tdd": "pass",
+    "review": "pass",
+    "owner": "go"
+  },
+  "artifacts": [
+    "10-requirements/TASK-001.md",
+    "20-planning/TASK-001.md",
+    "30-build/TASK-001-execution_evidence-20250413.md",
+    "40-review/TASK-001.md"
+  ],
+  "git_commit": "abc123"
+}
+```
+
+## 注意事项
+
+1. 这是发布流程的最后一环，必须谨慎决策
+2. Go 决策会执行 Git 提交，确保代码已准备好
+3. 发布归档后，任务状态变为 `released`
+4. No-Go 后需要修复问题并重新走审查流程
+5. 非交互模式适用于 CI/CD 场景，但建议关键发布使用交互式

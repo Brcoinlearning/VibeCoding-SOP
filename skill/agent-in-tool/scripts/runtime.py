@@ -13,43 +13,8 @@ from typing import Dict
 
 from scripts.blind_reviewer import BlindReviewer
 from scripts.contract_forger import skill_forge_contract
+from scripts.development_orchestrator import ensure_development_stage_ready, mark_development_stage
 from scripts.tdd_enforcer import skill_tdd_enforcer
-
-
-def read_task_contract(task_id: str, workspace_path: str | None = None) -> Dict:
-    """读取任务需求文档。"""
-    workspace = Path(workspace_path or ".")
-    task_file = workspace / "20-planning" / f"{task_id}.md"
-
-    if not task_file.exists():
-        return {
-            "task_id": task_id,
-            "error": f"Task file not found: {task_file}",
-            "status": "NOT_FOUND",
-        }
-
-    content = task_file.read_text(encoding="utf-8")
-    lines = content.split("\n")
-    title = lines[0].replace("#", "").strip() if lines else task_id
-
-    acceptance_criteria: list[str] = []
-    in_criteria_section = False
-    for line in lines:
-        if "验收标准" in line or "Acceptance Criteria" in line:
-            in_criteria_section = True
-            continue
-        if in_criteria_section:
-            if line.startswith("- "):
-                acceptance_criteria.append(line[2:].strip())
-            elif line.startswith("##"):
-                break
-
-    return {
-        "task_id": task_id,
-        "title": title,
-        "acceptance_criteria": acceptance_criteria,
-        "status": "READY",
-    }
 
 
 async def trigger_blind_review(
@@ -58,8 +23,36 @@ async def trigger_blind_review(
     api_key: str | None = None,
 ) -> Dict:
     """触发独立盲审。"""
+    gate = ensure_development_stage_ready(task_id, "dev-review", workspace_path)
+    if not gate["success"]:
+        return {
+            "status": "BLOCKED",
+            "message": gate["message"],
+            "missing_dependencies": gate.get("missing_dependencies", []),
+            "action": "COMPLETE_PREVIOUS_STAGE",
+        }
+
     reviewer = BlindReviewer(api_key=api_key)
-    return await reviewer.review(task_id, workspace_path)
+    result = await reviewer.review(task_id, workspace_path)
+    if result.get("status") == "PASS":
+        mark_development_stage(
+            task_id,
+            "dev-review",
+            "pass",
+            workspace_path=workspace_path,
+            evidence=result.get("report_file", ""),
+            note="blind review passed",
+        )
+    elif result.get("status") in {"REJECTED", "ERROR"}:
+        mark_development_stage(
+            task_id,
+            "dev-review",
+            "fail",
+            workspace_path=workspace_path,
+            evidence=result.get("report_file", ""),
+            note=result.get("message", "blind review failed"),
+        )
+    return result
 
 
 def show_confirmation_dialog(task_id: str, workspace: str) -> bool:
@@ -169,21 +162,75 @@ async def submit_to_owner(
     approval: str = "auto",
 ) -> Dict:
     """提交人类裁决。"""
+    gate = ensure_development_stage_ready(task_id, "dev-owner", workspace_path)
+    if not gate["success"]:
+        return {
+            "success": False,
+            "message": gate["message"],
+            "missing_dependencies": gate.get("missing_dependencies", []),
+        }
+
     if non_interactive:
         if approval == "no-go":
+            mark_development_stage(
+                task_id,
+                "dev-owner",
+                "fail",
+                workspace_path=workspace_path,
+                note="owner no-go (non-interactive)",
+            )
             return {
                 "success": False,
                 "message": "❌ 配置为拒绝放行 (No-Go)\n\n请根据反馈继续修复代码。",
             }
-        return await execute_release(task_id, workspace_path)
+        result = await execute_release(task_id, workspace_path)
+        if result.get("success"):
+            mark_development_stage(
+                task_id,
+                "dev-owner",
+                "pass",
+                workspace_path=workspace_path,
+                note="owner go (non-interactive)",
+            )
+            mark_development_stage(
+                task_id,
+                "released",
+                "pass",
+                workspace_path=workspace_path,
+                note="release completed",
+            )
+        return result
 
     approved = show_confirmation_dialog(task_id, workspace_path)
     if not approved:
+        mark_development_stage(
+            task_id,
+            "dev-owner",
+            "fail",
+            workspace_path=workspace_path,
+            note="owner no-go",
+        )
         return {
             "success": False,
             "message": "❌ 人类拒绝放行 (No-Go)\n\n请根据反馈继续修复代码。",
         }
-    return await execute_release(task_id, workspace_path)
+    result = await execute_release(task_id, workspace_path)
+    if result.get("success"):
+        mark_development_stage(
+            task_id,
+            "dev-owner",
+            "pass",
+            workspace_path=workspace_path,
+            note="owner go",
+        )
+        mark_development_stage(
+            task_id,
+            "released",
+            "pass",
+            workspace_path=workspace_path,
+            note="release completed",
+        )
+    return result
 
 
 __all__ = [
@@ -191,5 +238,4 @@ __all__ = [
     "skill_tdd_enforcer",
     "trigger_blind_review",
     "submit_to_owner",
-    "read_task_contract",
 ]

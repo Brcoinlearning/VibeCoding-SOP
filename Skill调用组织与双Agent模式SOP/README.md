@@ -22,3 +22,11 @@ v3.0 的核心升级：
 1. 人类不做跨 Agent 的数据搬运。
 2. Agent 结论必须绑定新鲜证据。
 3. 放行只有一个权威入口：Owner 的 Go/No-Go。
+
+## 与需求分析 SOP 的衔接
+
+外部技能完成三阶段需求分析后，统一进入本地四步执行链：
+
+`forge_requirements` -> `enforce_tdd` -> `trigger_blind_review` -> `submit_to_owner`
+
+仅这四个本地 Skill 为 active；`read_task_contract` 与人工搬运流程已弃用。

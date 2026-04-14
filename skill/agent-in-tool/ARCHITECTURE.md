@@ -112,29 +112,43 @@ return "❌ 审查未通过！发现 SQL 注入。请查阅 40-review/report.md"
 
 ## 使用流程
 
+### 需求分析前置调用链（外部 Skill）
+```
+阶段一：reverse-interviewing
+      + interview-conducting
+      + elicitation-methodology
+          ↓
+阶段二：architecture-patterns
+      + decomposition-planning-roadmap
+          ↓
+阶段三：tdd（形成 Gherkin / TDD 输入）
+```
+
 ### Builder 工作流
 ```
-1. read_task_contract("TASK-001")
+1. forge_requirements
    ↓
 2. [编写代码...]
    ↓
-3. trigger_blind_review("TASK-001")
+3. enforce_tdd
+   ↓
+4. trigger_blind_review
    ↓
    [后台: 独立 LLM 盲审]
    ↓
-4. 读取 40-review/TASK-001.md
+5. 读取 40-review/TASK-001.md
    ↓
-5. [修复代码...]
+6. [修复代码...]
    ↓
-6. trigger_blind_review("TASK-001")
+7. trigger_blind_review
    ↓
    [后台: 再次盲审]
    ↓
-7. submit_to_owner("TASK-001")
+8. submit_to_owner
    ↓
    [人类确认框]
    ↓
-8. ✅ 发布完成
+9. ✅ 发布完成
 ```
 
 ## 扩展指南

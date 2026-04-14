@@ -1,368 +1,138 @@
 ---
-name: trigger-blind-review
-description: Use when Builder Agent completes code and requests blind review. This tool spawns an independent LLM API call inside standalone Python runtime, achieving true physical isolation. The Builder cannot see the review process or prompt, only receives a simplified result message. Reports are written to 40-review/ directory with file locking.
+name: sop-trigger-blind-review
+description: Use after TDD gates pass to run isolated blind review with independent LLM session and persist structured review reports to 40-review directory.
 ---
 
-# Trigger Blind Review
+# SOP Trigger Blind Review
 
-## Overview
+在本地执行链中，执行独立盲审并产出结构化报告。
 
-⭐ **核心技能 - Agent-in-Tool盲审机制**
+## 触发条件
 
-Builder认为代码写完了，调用此工具请求验收。
+当以下情况时使用此技能：
+- TDD 门禁已通过
+- 需要进行独立的代码审查
+- 准备进入发布裁决前的审查
 
-## Agent-in-Tool 模式
+## 调用方式
 
-```python
-# 在独立运行时内部调用独立的LLM，实现真正的物理隔离
-async def trigger_blind_review(task_id: str) -> str:
-    # 1. 抓取证据 (Builder看不到这个过程)
-    diff = get_git_diff()
-    logs = get_test_logs()
-
-    # 2. 唤醒完全独立的Reviewer Agent
-    client = anthropic.AsyncAnthropic()
-    response = await client.messages.create(
-        model="claude-3-7-sonnet-20250219",
-        system="你是一个冷酷无情的顶级安全审查员...",
-        messages=[{"role": "user", "content": f"Diff:\n{diff}\nLogs:\n{logs}"}]
-    )
-
-    # 3. 结果落盘 (使用文件锁防竞态)
-    save_report_to_disk(task_id, response)
-
-    # 4. 对Builder进行"信息降维"返回
-    return format_minimal_response(response)
-```
-
-## 隔离机制
-
-### 1. 上下文隔离
-- Builder的上下文完全不会传递给Reviewer
-- 每次审查都是全新的LLM会话
-- Reviewer不知道Builder的"思考过程"
-
-### 2. 权限隔离
-- Builder只能调用工具，无法直接访问报告文件
-- 报告文件由独立 Python Runtime 直接写入文件系统
-- 使用文件锁防止并发冲突
-
-### 3. 信息降维
-- 报告文件包含完整的审查详情
-- Builder只能看到极简的返回消息
-- 防止Builder被大量信息"污染"
-
-## Reviewer System Prompt
-
-```python
-REVIEWER_SYSTEM_PROMPT = """
-你是一个冷酷无情的顶级安全审查员。你的任务是找出代码中的致命缺陷。
-
-## 审查重点
-
-1. **SQL注入漏洞**
-   - 检查所有数据库查询
-   - 验证参数化查询使用情况
-
-2. **XSS跨站脚本**
-   - 检查用户输入渲染
-   - 验证HTML转义
-
-3. **并发竞态条件**
-   - 检查共享状态访问
-   - 验证锁机制
-
-4. **空指针解引用**
-   - 检查变量使用前是否验证
-
-5. **业务逻辑错误**
-   - 检查边界条件
-   - 验证错误处理
-
-## 输出格式
-
-你必须返回纯JSON格式：
-
-```json
-{
-  "status": "PASS" | "REJECTED",
-  "lethal_flaw": "致命缺陷描述（如果存在）",
-  "severity": "critical" | "major" | "minor" | "info",
-  "exploit_path": "复现路径（步骤1/2/3）",
-  "remediation": "修复建议",
-  "findings": [
-    {
-      "category": "security | correctness | performance",
-      "issue": "问题描述",
-      "file": "文件路径",
-      "line": 行号,
-      "code": "问题代码片段"
-    }
-  ]
-}
-```
-
-## 审查原则
-
-- 宁可错杀，不可放过
-- 发现任何critical级别问题必须REJECTED
-- 没有测试覆盖的功能自动REJECTED
-- 代码风格问题不影响通过，但必须在findings中标注
-
-开始审查！
-"""
-```
-
-## Implementation
-
-```python
-import anthropic
-import subprocess
-import json
-from pathlib import Path
-from filelock import FileLock
-from typing import Dict
-
-async def trigger_blind_review(
-    task_id: str,
-    workspace_path: str = None,
-    api_key: str = None
-) -> Dict:
-    """
-    触发盲审
-
-    Args:
-        task_id: 任务ID
-        workspace_path: 工作区路径
-        api_key: Anthropic API密钥
-
-    Returns:
-        极简返回结果
-    """
-    if workspace_path is None:
-        workspace_path = "."
-
-    # 1. 抓取证据
-    evidence = await collect_evidence(workspace_path)
-
-    # 2. 派生子智能体
-    client = anthropic.AsyncAnthropic(api_key=api_key)
-
-    try:
-        response = await client.messages.create(
-            model="claude-3-7-sonnet-20250219",
-            max_tokens=4096,
-            temperature=0,  # 确保一致的审查
-            system=REVIEWER_SYSTEM_PROMPT,
-            messages=[{
-                "role": "user",
-                "content": f"""请审查以下代码变更：
-
-## Git Diff
-```
-{evidence['diff']}
-```
-
-## 测试结果
-```
-{evidence['test_logs']}
-```
-
-## 变更文件
-{', '.join(evidence['changed_files'])}
-
-请返回JSON格式的审查结果。"""
-            }]
-        )
-
-        # 3. 解析JSON响应
-        review_json = parse_review_response(response)
-
-        # 4. 结果落盘 (使用文件锁)
-        await save_review_report(task_id, review_json, workspace_path)
-
-        # 5. 信息降维返回
-        return format_minimal_response(review_json)
-
-    except Exception as e:
-        return {
-            "status": "ERROR",
-            "message": f"审查失败: {str(e)}"
-        }
-
-
-async def collect_evidence(workspace_path: str) -> Dict:
-    """收集审查证据"""
-    # Git diff
-    result = subprocess.run(
-        ["git", "diff", "HEAD~1", "HEAD"],
-        cwd=workspace_path,
-        capture_output=True,
-        text=True
-    )
-    diff = result.stdout
-
-    # 测试日志
-    test_log_path = Path(workspace_path) / "pytest_results.json"
-    if test_log_path.exists():
-        test_logs = test_log_path.read_text()
-    else:
-        test_logs = "No test results found"
-
-    # 变更文件
-    result = subprocess.run(
-        ["git", "diff", "--name-only", "HEAD~1", "HEAD"],
-        cwd=workspace_path,
-        capture_output=True,
-        text=True
-    )
-    changed_files = [f for f in result.stdout.strip().split('\n') if f]
-
-    return {
-        "diff": diff,
-        "test_logs": test_logs,
-        "changed_files": changed_files
-    }
-
-
-def parse_review_response(response) -> Dict:
-    """解析LLM响应为JSON"""
-    content = response.content[0].text
-
-    # 提取JSON (可能被markdown代码块包裹)
-    if "```json" in content:
-        json_start = content.find("```json") + 7
-        json_end = content.find("```", json_start)
-        json_str = content[json_start:json_end].strip()
-    else:
-        json_str = content.strip()
-
-    return json.loads(json_str)
-
-
-async def save_review_report(task_id: str, review: Dict, workspace: str):
-    """保存审查报告 (带文件锁)"""
-    review_dir = Path(workspace) / "40-review"
-    review_dir.mkdir(parents=True, exist_ok=True)
-
-    report_file = review_dir / f"{task_id}.json"
-    lock_file = review_dir / f"{task_id}.lock"
-
-    # 使用文件锁防止并发写入
-    with FileLock(lock_file, timeout=5):
-        with open(report_file, 'w', encoding='utf-8') as f:
-            json.dump(review, f, indent=2, ensure_ascii=False)
-
-    # 同时生成Markdown报告
-    md_file = review_dir / f"{task_id}.md"
-    with FileLock(lock_file, timeout=5):
-        md_content = format_review_markdown(review)
-        with open(md_file, 'w', encoding='utf-8') as f:
-            f.write(md_content)
-
-
-def format_minimal_response(review: Dict) -> Dict:
-    """格式化极简返回给Builder"""
-    if review["status"] == "REJECTED":
-        return {
-            "status": "REJECTED",
-            "message": f"❌ 审查未通过！发现 {review['severity']} 级别问题：{review['lethal_flaw']}",
-            "report_file": f"40-review/{task_id}.md",
-            "action": "FIX_AND_RETRY"
-        }
-    else:
-        return {
-            "status": "PASS",
-            "message": "✅ 审查通过！请调用 submit_to_owner 请求人类放行。",
-            "action": "SUBMIT_TO_OWNER"
-        }
-
-
-def format_review_markdown(review: Dict) -> str:
-    """格式化Markdown报告"""
-    md = f"""# Blind Review Report
-
-## Status: {review['status']}
-
-"""
-    if review["status"] == "REJECTED":
-        md += f"""## ❌ Rejected
-
-### Lethal Flaw
-{review['lethal_flaw']}
-
-### Severity
-{review['severity'].upper()}
-
-### Exploit Path
-```
-{review['exploit_path']}
-```
-
-### Remediation
-{review['remediation']}
-
-"""
-    else:
-        md += "## ✅ Approved\n\nNo critical issues found.\n"
-
-    md += "\n## Detailed Findings\n\n"
-    for i, finding in enumerate(review.get("findings", []), 1):
-        md += f"### {i}. {finding['issue']}\n"
-        md += f"- **File**: `{finding['file']}`\n"
-        md += f"- **Line**: {finding['line']}\n"
-        md += f"- **Category**: {finding['category']}\n"
-        md += f"```{finding['code']}``\n\n"
-
-    return md
-```
-
-## Standalone CLI 调用
-
+### 独立调用（无门禁）
 ```bash
 python3 cli.py blind-review TASK-001 --workspace .
 ```
 
-## Architecture Diagram
+### 通过总控调用（强门禁）
+当通过 `development_phase_orchestrator` 调用时，会自动检查：
+- dev-tdd 阶段是否通过
+- TDD 执行证据是否存在
 
+## 核心特性
+
+### 1. 上下文隔离
+- 使用全新的 LLM 会话
+- Builder 的上下文完全不会传递给 Reviewer
+- 确保审查的独立性
+
+### 2. 权限隔离
+- 使用文件锁防止并发冲突
+- 独立的文件系统写入
+
+### 3. 信息降维
+- 完整报告落盘到 `40-review/` 目录
+- CLI 只返回极简结果（PASS/REJECTED/ERROR）
+
+## 输入参数
+
+- `task_id`: 任务编号（必填）
+- `--workspace`: 工作目录（可选，默认 "."）
+- `--api-key`: API 密钥（可选，默认读取 `ANTHROPIC_API_KEY`）
+
+## 输出产物
+
+1. **结构化报告**：`40-review/{task_id}.json`
+2. **人类可读报告**：`40-review/{task_id}.md`
+3. **CLI 返回**：`PASS` / `REJECTED` / `ERROR`
+
+## 完整示例
+
+```bash
+# 标准盲审
+python3 cli.py blind-review TASK-001 --workspace .
+
+# 使用自定义 API Key
+python3 cli.py blind-review TASK-001 --workspace . --api-key "sk-ant-..."
 ```
-Builder Agent             Standalone Skill              Anthropic API
-     |                           |                            |
-     |  trigger_blind_review     |                            |
-     |-------------------------->|                            |
-     |                           |  1. Collect Evidence        |
-     |                           |  2. Spawn Independent Agent |
-     |                           |---------------------------->|
-     |                           |  System Prompt + Diff       |
-     |                           |                            |
-     |                           |  3. Blind Review            |
-     |                           |<----------------------------|
-     |                           |  JSON Report                |
-     |                           |                            |
-     |                           |  4. Save to Disk            |
-     |                           |  (40-review/)              |
-     |                           |                            |
-     |  "❌ 审查未通过"           |                            |
-     |<--------------------------|                            |
-     |                           |                            |
-     v                           v                            v
-  Read Report                Review Complete            Isolated Review
+
+## 返回值
+
+### PASS（通过）
+```json
+{
+  "success": true,
+  "result": "PASS",
+  "task_id": "TASK-001",
+  "summary": "代码质量良好，测试覆盖充分，可以进入发布裁决",
+  "report_file": "40-review/TASK-001.md"
+}
 ```
 
-## Files Structure
-
+### REJECTED（拒绝）
+```json
+{
+  "success": false,
+  "result": "REJECTED",
+  "task_id": "TASK-001",
+  "summary": "发现以下问题需要修复：...",
+  "issues": [
+    {
+      "severity": "high",
+      "description": "测试覆盖率不足"
+    }
+  ],
+  "report_file": "40-review/TASK-001.md"
+}
 ```
-trigger_blind_review/
-├── SKILL.md                    # 本文件
-└── scripts/
-    ├── blind_reviewer.py       # Agent-in-Tool实现
-    ├── evidence_collector.py   # 证据收集
-    └── report_generator.py     # 报告生成
+
+### ERROR（错误）
+```json
+{
+  "success": false,
+  "result": "ERROR",
+  "task_id": "TASK-001",
+  "error": "审查过程中发生错误：..."
+}
 ```
 
-## Key Insights
+### BLOCKED（门禁拦截）
+```json
+{
+  "success": false,
+  "status": "BLOCKED",
+  "message": "前置阶段 dev-tdd 未通过",
+  "missing_dependencies": ["dev-tdd"]
+}
+```
 
-1. **物理隔离**：每个审查都是全新的API调用
-2. **真正的AI**：审查由LLM理解完成，而非死板规则
-3. **信息降维**：Builder只看到结果，不看到过程
-4. **可追溯**：完整报告保存在文件系统
+## 门禁规则
+
+1. TDD 门禁未通过时，不允许执行盲审
+2. 盲审结果为 REJECTED 或 ERROR 时，必须回到 Builder 修复并重试
+3. 盲审结果为 PASS 时，才允许调用 `submit_to_owner`
+4. 报告文件缺失或不可解析时，按失败处理
+
+## 审查标准
+
+盲审会检查以下方面：
+- 代码质量与可维护性
+- 测试覆盖充分性
+- 需求实现完整性
+- 文档与注释质量
+- 安全性问题
+- 性能问题
+
+## 注意事项
+
+1. 盲审使用对抗性 System Prompt，确保审查的严格性
+2. 独立调用时不会检查门禁，适合快速审查
+3. 总控调用时会强制检查前置条件
+4. 只有 PASS 状态才能进入发布裁决阶段
