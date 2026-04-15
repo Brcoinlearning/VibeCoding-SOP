@@ -1,41 +1,296 @@
 ---
 name: tech-selection
-description: Use when producing phase 2 technology selection document from business rules memo
+description: 用于四阶段准备链的第 2 阶段，在边界收敛完成后通过多轮技术问答、方案比选和复用机会识别，产出技术选型文档，并决定是否允许进入 Architecture
 ---
 
 # Tech Selection
 
-## Scope
+## 技能定位
 
-This skill is documentation-only in current phase.
+这是当前项目四阶段准备链的第 2 阶段 skill。
 
-- Allowed: produce decision documents
-- Not allowed: implement scripts, CLIs, orchestrators, runtime services
+它的目标不是直接画架构，也不是开始 task 拆解，而是在已完成 `Boundary Convergence` 的前提下，先把“本轮应该采用什么技术路线、避免什么方案、是否存在值得复用的外部开源实现”这些技术问题收敛清楚。
 
-## Input
+本阶段是一个高交互决策阶段，不是一次性拍板写结论。
 
-- `10-requirements/{task_id}_business_rules_memo.md`
+## 本阶段的唯一目标
 
-## Output
+形成一份可交接的《技术选型文档》，并明确：
 
-- `15-tech-selection/{task_id}_tech_selection.md`
+- 哪些技术方向是本轮优先沿用的
+- 哪些技术方向明确不采用
+- 哪些外部开源仓库或公开实现值得复用
+- 哪些技术问题需要带着约束进入 `Architecture`
+- 是否已经具备进入 `Architecture` 的条件
 
-## Required Content
+## 不做什么
 
-1. Candidate options and tradeoffs
-2. Compatibility and dependency analysis
-3. Reuse-first decisions (prefer existing superpowers skills)
-4. Chosen approach with rationale
-5. Explicit current-phase boundary statement
+本阶段禁止混入以下内容：
 
-## Process
+- 直接产出架构图或模块设计
+- 直接做 task 拆解
+- 直接开始编码
+- 把“以后可能会做”的扩展想法伪装成当前必选方案
 
-1. Map business requirements to technical concerns.
-2. Compare alternatives with pros/cons.
-3. Select approach favoring existing skills and low implementation risk.
-4. Record deferred items as "后续代码化阶段可选".
+如果讨论开始滑向结构设计或实现细节，要把话题拉回技术边界与选型约束。
 
-## Quality Gates
+## 输入
 
-- Must align with requirement memo boundaries.
-- Must not prescribe immediate Python/script implementation in current phase.
+至少包含：
+
+- `Boundary Convergence` 阶段产出的 `10-requirements/business_rules_memo.md`
+- 当前项目背景
+- `superpowers` 原项目的现有运行结构与 skill 组织方式
+
+可选输入：
+
+- 已有 demo
+- 已知候选技能或参考实现
+- 用户明确提出的技术偏好或禁用项
+
+读取规则：
+
+- 启动时先检查 `10-requirements/business_rules_memo.md` 是否存在
+- 先读取其 frontmatter 和摘要，再按需读取正文章节
+- 仅当 `status: approved` 时才允许进入本阶段
+- 不要默认把所有上游全文放入上下文
+
+## 输出
+
+输出文件：
+
+- `15-tech-selection/tech-selection.md`
+
+该文档必须包含统一 frontmatter：
+
+```yaml
+---
+doc_id: "tech_selection"
+phase: "tech-selection"
+artifact: "tech_selection"
+status: "draft|in_review|approved|superseded"
+derived_from:
+  - "business_rules_memo"
+updated_at: "YYYY-MM-DD"
+---
+```
+
+输出内容至少必须包含：
+
+1. 本轮技术目标
+2. 已确认的输入约束
+3. 候选方案列表
+4. 每个候选方案的契合度与代价分析
+5. 对 `superpowers` 原有结构的沿用策略
+6. 可复用开源仓库 / 公开实现检查结果
+7. 明确采用项
+8. 明确不采用项
+9. 带入 `Architecture` 的技术约束
+10. 待确认事项
+
+## 核心方法
+
+### 1. 多轮技术问答
+
+本阶段必须通过多轮问答完成，不得直接给出“推荐方案”然后结束。
+
+每一轮应聚焦一个技术决策维度，每轮优先只推进 `1-2` 个高影响问题。
+
+### 2. 候选项收敛
+
+对每个关键技术问题，尽量给出候选项，而不是抽象追问。
+
+每个候选项至少要说明：
+
+- 为什么它适合当前项目
+- 为什么它可能不适合当前项目
+- 与“沿用并增强 `superpowers`”的契合程度
+- 对后续 `Architecture` 和实现的影响
+
+### 3. 外部复用对象检查
+
+本阶段必须显式检查是否存在值得复用的外部开源仓库或公开实现。
+
+至少回答以下问题：
+
+- 是否存在与当前需求高度贴近的开源仓库或公开实现路径
+- 如果存在，可直接复用的是哪一层：整体 workflow、某个 skill 组织方式、提示词协议、review 机制，还是局部实现思路
+- 如果不存在，明确记录“未发现高匹配复用对象”，不要装作已经比较过
+
+说明：
+
+- 这里的“复用对象”重点指外部开源仓库或公开实现，而不是当前仓库内部资产
+- 本阶段可以使用 GitHub 检索类 skill 或同类能力辅助识别候选仓库
+- 即便识别到候选仓库，也只在本阶段完成“是否值得借鉴/复用”的判断，不提前进入架构或实现设计
+
+## 分析维度
+
+至少覆盖以下维度：
+
+### 1. 运行结构维度
+
+- 是否继续以 `superpowers` skill 体系为主骨架
+- 哪些流程节点保留
+- 哪些流程节点替换
+
+### 2. 组织方式维度
+
+- 是在原 skill 上做增强
+- 还是新增本地 skill
+- 哪些规则应集中沉淀，哪些规则应分散在各 skill 中
+
+### 3. 复用维度
+
+- 是否存在值得复用的外部开源实现
+- 复用的粒度应该是整体借鉴、局部借鉴，还是仅作思路参考
+- 哪些内容即便来自外部仓库，也不应被带入当前项目
+
+### 4. 风险维度
+
+- 哪些方案会让流程过重
+- 哪些方案会让 agent 更容易跑偏
+- 哪些方案会削弱 Owner 的可见性
+
+### 5. 演进维度
+
+- 哪些扩展可以留到以后
+- 哪些如果现在不定，后面架构会失真
+
+## 提问原则
+
+### 原则 1：优先问会改变技术路线的问题
+
+先问那些会直接改变“沿用什么、替换什么、复用什么”的问题。
+
+### 原则 2：提问要给出可选项和契合分析
+
+不要只问“你想怎么做”。要给用户看见可选路径，以及每条路径和当前需求的关系。
+
+例如：
+
+```text
+关于前置四阶段的实现方式，当前有两条可选路径：
+
+1. 显式调用已有外部 skill
+   契合点：能力来源清晰，便于复用既有方法
+   代价：skill 调用链会更长，流程透明度和维护成本会上升
+
+2. 吸收已有 skill 内部内容后，直接写成本地协议 skill
+   契合点：更贴近你当前“沿用并增强、但不让链路过复杂”的目标
+   代价：需要我们主动做好取舍，避免只剩表面复述
+
+基于当前项目，你更倾向哪一种作为主策略？
+```
+
+### 原则 3：对“复用”必须追问到对象级别
+
+如果用户说“最好能复用”，必须继续问清楚：
+
+- 希望复用的是哪类外部仓库或公开实现
+- 复用到什么程度
+- 哪些部分绝不能被带回来
+
+### 原则 4：没有比较就不要给结论
+
+如果没有列出候选项和对比理由，不要直接写“推荐方案”。
+
+## 对 Owner 的可见性要求
+
+在本阶段开始时，先用中文说明：
+
+```text
+当前进入阶段：技术选型（Tech Selection）
+
+我已读取：<已读取的材料路径>
+本阶段目标：收敛本轮应该采用什么技术路线、避免什么方向，以及是否存在值得复用的外部开源仓库或公开实现。
+本阶段不会进入架构设计、task 拆解或实际编码。
+
+接下来我会通过多轮技术问答逐步收敛，每轮优先只推进 1-2 个高影响问题。
+```
+
+在每轮提问前，如果正在比较某个方向，要明确告诉 Owner 当前聚焦点，例如：
+
+```text
+本轮聚焦：外部开源复用对象检查与技术路线取舍
+```
+
+在阶段结束时，必须先汇报再进入下一阶段：
+
+```text
+技术选型阶段完成。
+
+已产出：<技术选型文档路径>
+本阶段确定的主选方向：<摘要>
+本阶段明确排除的方向：<摘要>
+已确认的外部复用对象：<列表；若没有则明确写“无”>
+仍未决的问题：<列表；若没有则明确写“无”>
+
+若仍存在会影响架构判断的关键技术未决点，则不得进入 Architecture。
+```
+
+## 技术选型文档建议结构
+
+建议使用以下结构：
+
+```markdown
+# 技术选型文档
+
+## 1. 本轮技术目标
+
+## 2. 已确认的输入约束
+
+## 3. 候选方案列表
+
+## 4. 方案契合度与代价分析
+
+## 5. 对 superpowers 原有结构的沿用策略
+
+## 6. 可复用开源对象检查结果
+
+## 7. 明确采用项
+
+## 8. 明确不采用项
+
+## 9. 带入 Architecture 的技术约束
+
+## 10. 待确认事项
+```
+
+## 放行条件
+
+只有同时满足以下条件，才允许进入 `Architecture`：
+
+1. 已明确本轮主选技术方向，而不是停留在泛泛讨论。
+2. 已明确哪些方向不采用，避免后续架构反复摇摆。
+3. 已明确对 `superpowers` 的沿用与增强边界。
+4. 已完成外部开源复用对象检查，并形成结论，而不是口头说“后面再看”。
+5. 待确认事项不存在会阻断架构设计的关键缺口。
+6. 输出文档 frontmatter 中 `status` 已更新为 `approved`。
+
+如果以上任一条件不满足，本阶段应判定为未通过，继续比较、追问或补充信息。
+
+## 状态断言
+
+本阶段启动前，必须先断言：
+
+- `10-requirements/business_rules_memo.md` 存在
+- 其 `doc_id` 为 `business_rules_memo`
+- 其 `status` 为 `approved`
+
+若以上任一条件不满足，则不得进入本阶段。
+
+## 失败信号
+
+出现以下情况时，说明本阶段没有真正完成：
+
+- 只有一个方案，没有比较过程
+- 只写“推荐使用某方案”，没有契合分析和代价说明
+- 完全没有外部开源复用对象检查结果
+- 没有明确不采用项
+- 把架构设计内容提前写进技术选型文档
+
+## 与后续阶段的边界
+
+- 本阶段负责回答“在已经收敛的需求边界内，我们优先采用什么技术路线与复用策略”。
+- `Architecture` 负责回答“在这些技术约束下，结构怎么组织、任务怎么拆”。
+- 本阶段不要提前替 `Architecture` 完成结构设计。

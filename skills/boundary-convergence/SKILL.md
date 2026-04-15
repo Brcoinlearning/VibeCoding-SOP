@@ -1,48 +1,301 @@
 ---
 name: boundary-convergence
-description: Use when converting raw request into structured business rules memo for phase 1
+description: 用于四阶段准备链的第 1 阶段，通过角色反转式多轮提问收敛需求边界，产出业务规则备忘录，并决定是否允许进入 Tech Selection
 ---
 
 # Boundary Convergence
 
-## Scope
+## 技能定位
 
-This skill is for documentation output only in the current project phase.
+这是当前项目四阶段准备链的第 1 阶段 skill。
 
-- Allowed: requirement analysis documents
-- Not allowed: runtime code, scripts, orchestrator implementation
+它的目标不是给出实现方案，也不是开始拆 task，而是先把需求中的模糊地带压缩到足够低，让后续 `Tech Selection`、`Architecture`、`Contract Solidification` 都建立在稳定输入之上。
 
-## Input
+本 skill 直接吸收“角色反转式拷问”的有效方法，但不要求再显式调用外部 skill。
 
-- Raw requirement text
-- Optional background constraints
+## 本阶段的唯一目标
 
-## Output
+把原始需求收敛为一份可交接的《业务规则备忘录》，并明确：
 
-- `10-requirements/{task_id}_business_rules_memo.md`
+- 当前范围内要解决什么
+- 当前范围外不解决什么
+- 关键业务规则是什么
+- 还有哪些未决点
+- 是否已经具备进入 `Tech Selection` 的条件
 
-## Required Sections
+## 不做什么
 
-1. 核心概念定义
-2. 需求概述
-3. 目标用户描述
-4. 核心价值说明
-5. 功能需求
-6. 非功能需求
-7. 业务规则
-8. 边界条件
-9. 异常处理
-10. 数据规范
+本阶段禁止混入以下内容：
 
-## Process
+- 直接开始实现方案设计
+- 直接开始 task 拆解
+- 提前进入技术选型结论
+- 编写任何运行时代码、脚本、orchestrator
 
-1. Detect ambiguous points across function/data/user/tech/business dimensions.
-2. Ask clarifying questions in rounds.
-3. Consolidate confirmed answers into the memo.
-4. Ensure output is complete and consistent with project boundaries.
+如果在提问过程中发现用户实际上是在问“该怎么实现”，也要先把问题拉回边界收敛，而不是跳阶段。
 
-## Quality Gates
+## 输入
 
-- Output path and filename must match phase conventions.
-- No implementation code generation.
-- No references requiring `scripts/*` or `orchestrator/*`.
+至少包含：
+
+- 用户的原始需求描述
+- 当前项目背景
+- 已知参考项目或现有实现约束
+
+可选输入：
+
+- 用户已提供的前置文档
+- 已知风险、历史问题、已有 demo
+
+读取规则：
+
+- 优先读取文档 frontmatter 和摘要
+- 只在当前问题需要时再展开读取具体章节
+- 不要默认把所有前置材料全文灌入上下文
+
+## 输出
+
+输出文件：
+
+- `10-requirements/business_rules_memo.md`
+
+该文档必须包含统一 frontmatter：
+
+```yaml
+---
+doc_id: "business_rules_memo"
+phase: "boundary-convergence"
+artifact: "business_rules_memo"
+status: "draft|in_review|approved|superseded"
+derived_from: []
+updated_at: "YYYY-MM-DD"
+---
+```
+
+输出内容至少必须包含：
+
+1. 需求概述
+2. 核心目标
+3. 范围内内容
+4. 范围外内容
+5. 核心概念定义
+6. 用户与使用场景
+7. 功能性要求
+8. 非功能性要求
+9. 业务规则
+10. 边界条件
+11. 异常处理
+12. 数据约束
+13. 待确认事项
+
+## 核心方法
+
+### 1. 角色反转
+
+默认模式不是“用户提一句，agent 直接总结”，而是：
+
+- agent 主动提问
+- 用户回答
+- agent 继续追问模糊点
+- 直到关键边界收敛
+
+### 2. 多轮提问
+
+必须采用多轮提问，不得一轮草草结束。
+
+每一轮只问 `1-2` 个高相关问题，等待用户回答后再继续。
+
+不要一次抛出一长串问题清单，否则用户容易漏答，边界也不容易真正收敛。
+
+### 3. 模糊地带检测
+
+每轮提问都要持续检查以下维度是否仍然模糊：
+
+#### 功能维度
+
+- 输入是什么
+- 输出是什么
+- 成功标准是什么
+- 边界条件是什么
+
+#### 数据维度
+
+- 数据来源是什么
+- 数据格式或结构有什么约束
+- 数据规模和一致性要求是什么
+
+#### 用户维度
+
+- 谁在使用
+- 典型使用场景是什么
+- 是否存在角色差异或权限差异
+
+#### 技术约束维度
+
+- 是否有必须沿用的原项目结构
+- 是否有性能、安全、兼容性约束
+- 是否有不能接受的技术路径
+
+#### 业务维度
+
+- 业务规则是什么
+- 什么情况算例外
+- 什么情况必须拒绝或拦截
+
+#### 异常与边缘维度
+
+- 失败场景是什么
+- 极端输入或异常流程怎么处理
+- 哪些问题现在不能靠“实现时再看”糊过去
+
+## 提问原则
+
+### 原则 1：优先问会影响后续决策的问题
+
+优先解决会直接影响范围、架构、契约、task 拆解的问题。
+
+### 原则 2：提问要给选项，但不能替用户偷做决定
+
+当问题适合用候选项收敛时，要给出可选项，并说明各自与当前项目的契合点和代价。
+
+例如：
+
+```text
+这里有两种常见边界定义方式：
+
+1. 只覆盖配置层深度定制
+   契合点：改动范围更稳，更贴近先做增强而非重构
+   代价：部分运行时灵活性先不处理
+
+2. 同时覆盖配置层和执行期行为定制
+   契合点：后续扩展空间更大
+   代价：本轮 task 拆解和 review 难度会明显上升
+
+你当前更倾向哪一种？如果都不完全合适，也可以指出你想保留和排除的部分。
+```
+
+### 原则 3：回答模糊时必须追问
+
+如果用户回答类似“尽量快”“需要支持”“最好能复用”，不能直接收下，必须进一步具体化。
+
+### 原则 4：边缘情况必须问
+
+不能只问主流程。至少要覆盖：
+
+- 失败流
+- 边界流
+- 权限或角色差异
+- 数据异常
+- 与现有项目结构冲突的情况
+
+## 对 Owner 的可见性要求
+
+在本阶段开始时，先用中文说明：
+
+```text
+当前进入阶段：边界收敛（Boundary Convergence）
+
+我已读取：<已读取的材料路径>
+本阶段目标：把当前需求收敛为《业务规则备忘录》，明确范围、业务规则、边界条件和未决点。
+本阶段不会进入实现、task 拆解或技术定案。
+
+接下来我会通过多轮提问逐步收敛，每轮只问 1-2 个问题。
+```
+
+在每轮提问前，如果提问方向发生变化，要让 Owner 看见你正在收敛哪个维度，例如：
+
+```text
+本轮聚焦：用户角色与权限边界
+```
+
+在阶段结束时，必须先汇报再进入下一阶段：
+
+```text
+边界收敛阶段完成。
+
+已产出：<业务规则备忘录路径>
+本阶段确认的范围：<摘要>
+本阶段确认的关键业务规则：<摘要>
+仍未决的问题：<列表；若没有则明确写“无”>
+
+若仍存在影响技术选型或架构判断的未决点，则不得进入 Tech Selection。
+```
+
+## 业务规则备忘录建议结构
+
+建议使用以下结构：
+
+```markdown
+# 业务规则备忘录
+
+## 1. 需求概述
+
+## 2. 核心目标
+
+## 3. 范围内内容
+
+## 4. 范围外内容
+
+## 5. 核心概念定义
+
+## 6. 用户与使用场景
+
+## 7. 功能性要求
+
+## 8. 非功能性要求
+
+## 9. 业务规则
+
+## 10. 边界条件
+
+## 11. 异常处理
+
+## 12. 数据约束
+
+## 13. 待确认事项
+```
+
+## 放行条件
+
+只有同时满足以下条件，才允许进入 `Tech Selection`：
+
+1. 需求范围已经清晰，不再依赖实现期临时猜测。
+2. 范围内/范围外已经明确区分。
+3. 关键业务规则已经写清楚。
+4. 关键边界条件和异常场景已经写清楚。
+5. 待确认事项不存在会阻断技术选型的关键缺口。
+6. 输出文档 frontmatter 中 `status` 已更新为 `approved`。
+
+如果以上任一条件不满足，本阶段应判定为未通过，继续追问或要求补充信息。
+
+## 状态断言
+
+本阶段是准备链起点，不要求前置阶段状态。
+
+但在阶段结束时，必须把输出文档状态显式更新为以下之一：
+
+- `draft`
+- `in_review`
+- `approved`
+- `superseded`
+
+后续 `Tech Selection` 只应消费 `status: approved` 的 `10-requirements/business_rules_memo.md`。
+
+## 失败信号
+
+出现以下情况时，说明本阶段没有真正收敛：
+
+- 输出里只有需求复述，没有边界判断
+- 没有明确“范围外内容”
+- 没有异常处理或边缘情况
+- 存在大量“待实现时确定”“后续再说”式表述
+- 用户一句模糊回答就直接被写进正式文档
+
+## 与后续阶段的边界
+
+- 本阶段负责回答“我们到底要解决什么问题”。
+- `Tech Selection` 负责回答“在这些边界内，优先选什么技术路线与复用策略”。
+- `Architecture` 负责回答“结构怎么组织，task 怎么拆”。
+- `Contract Solidification` 负责回答“后续实现和 review 必须验证什么”。
+
+不要在本阶段偷偷提前做后面三件事。
