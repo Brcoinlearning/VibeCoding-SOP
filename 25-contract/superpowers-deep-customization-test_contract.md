@@ -9,10 +9,11 @@
 本轮契约覆盖以下对象：
 
 1. 四阶段准备链
-2. `using-git-worktrees` 前的放行条件
-3. 正式开发阶段的透明度检查点
-4. reviewer 隔离与显式调用
-5. Architecture 阶段 task 分解质量
+2. 固定产物命名与 frontmatter 状态门禁
+3. `using-git-worktrees` 前的放行条件
+4. 正式开发阶段的透明度检查点
+5. reviewer 隔离与显式调用
+6. Architecture 阶段 task 分解质量
 
 ## Feature 1：四阶段准备链
 
@@ -46,7 +47,37 @@ Feature: 四阶段准备链替代前半主链
     And 不得进入下一阶段
 ```
 
-## Feature 2：Architecture 阶段的 task 分解质量
+## Feature 2：固定产物命名与 frontmatter 状态门禁
+
+```gherkin
+Feature: 四阶段产物必须使用固定文件名与 frontmatter 状态门禁
+  作为流程消费者
+  我希望阶段输入输出路径稳定且可断言
+  以便避免文档命名漂移和阶段误放行
+
+  Scenario: 四阶段产物使用固定文件名
+    Given 系统正在执行四阶段准备链
+    When 每个阶段产出文档
+    Then 文件名应固定为：
+      | 路径 |
+      | 10-requirements/business_rules_memo.md |
+      | 15-tech-selection/tech-selection.md |
+      | 20-architecture/architecture.md |
+      | 20-architecture/tasks.md |
+      | 25-contract/test_contract.md |
+
+  Scenario: 下一阶段开始前必须检查上游 frontmatter 状态
+    Given 下一阶段准备启动
+    When 系统检查上游文档
+    Then 必须读取并展示至少以下关键字段：
+      | 字段 |
+      | doc_id |
+      | phase |
+      | status |
+    And 只有当上游文档状态为 approved 时才允许继续
+```
+
+## Feature 3：Architecture 阶段的 task 分解质量
 
 ```gherkin
 Feature: Architecture 阶段必须输出可执行 task 分解
@@ -73,7 +104,7 @@ Feature: Architecture 阶段必须输出可执行 task 分解
     And 系统应指出粒度或依赖问题
 ```
 
-## Feature 3：正式开发阶段从 using-git-worktrees 开始
+## Feature 4：正式开发阶段从 using-git-worktrees 开始
 
 ```gherkin
 Feature: using-git-worktrees 是正式开发入口
@@ -92,7 +123,7 @@ Feature: using-git-worktrees 是正式开发入口
     Then 系统必须阻止进入 using-git-worktrees
 ```
 
-## Feature 4：task 开始前的透明度检查点
+## Feature 5：task 开始前的透明度检查点
 
 ```gherkin
 Feature: 每个 task 开始前必须与 Owner 对齐
@@ -118,7 +149,7 @@ Feature: 每个 task 开始前必须与 Owner 对齐
     Then 该 task 应被视为流程不合格
 ```
 
-## Feature 5：reviewer 调用必须显式可见
+## Feature 6：reviewer 调用必须显式可见
 
 ```gherkin
 Feature: reviewer 调用必须对 Owner 可见
@@ -147,7 +178,7 @@ Feature: reviewer 调用必须对 Owner 可见
     Then 该 task 的 review 结果应视为无效
 ```
 
-## Feature 6：task 完成后的汇报与高风险写入门禁
+## Feature 7：task 完成后的汇报与高风险写入门禁
 
 ```gherkin
 Feature: task 完成后必须汇报，高风险改动必须预览后写入
@@ -167,8 +198,45 @@ Feature: task 完成后必须汇报，高风险改动必须预览后写入
     And 在 Owner 确认前不得正式写入
 ```
 
-## Feature 7：正式开发阶段仍沿用原后半执行骨架
+## Feature 8：正式开发阶段仍沿用原后半执行骨架
 
+```gherkin
+Feature: 正式开发透明度协议是统一公共规则
+  作为 Owner
+  我希望正式开发阶段使用统一的透明度模板
+  以便不同 skill 不会各说各话
+
+  Scenario: 正式开发链统一遵循 transparency protocol
+    Given 系统已进入正式开发阶段
+    When implementer 或 reviewer 相关说明被触发
+    Then 应遵循 development-transparency-protocol 中定义的统一模板
+    And 不应由各个执行 skill 各自定义一套相互冲突的话术
+```
+
+## 结构化契约块
+
+除人类可读的 Markdown 契约外，文档中还应嵌入可机器消费的结构化契约块，至少包含：
+
+```yaml
+contract_meta:
+  doc_id: "test_contract"
+  version: 1
+
+scenarios:
+  - scenario_id: "contract-gate-001"
+    scenario_type: "phase_gate"
+    phase_gate: "using-git-worktrees"
+    required_evidence:
+      - "business_rules_memo.status=approved"
+      - "tech_selection.status=approved"
+      - "architecture.status=approved"
+      - "tasks.status=approved"
+      - "test_contract.status=approved"
+    pass_condition: "all_required_documents_approved"
+    fail_block: true
+```
+
+这样做的目的不是引入新的执行平台，而是让后续自动化校验具备稳定锚点。
 ```gherkin
 Feature: 后半执行骨架保持与原项目一致
   作为架构设计者

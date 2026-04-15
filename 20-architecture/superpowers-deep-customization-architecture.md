@@ -107,6 +107,8 @@
 **放行规则**：
 - 任一阶段不通过，不得进入下一阶段。
 - 四阶段全部通过前，不得进入 `using-git-worktrees`。
+- 阶段放行以文档 frontmatter 中的 `status: approved` 为准。
+- 下一阶段开始前，必须向 Owner 显式展示上游文档的关键 frontmatter 字段。
 
 ### 模块 2：正式开发执行链
 
@@ -135,6 +137,10 @@
 - task 完成后必须先汇报改动摘要和结果
 - 高风险 task 必须预览后写入
 - reviewer 必须是独立 fresh subagent，并使用专门 reviewer prompt
+
+**统一载体**：
+- 正式开发期的说明模板统一收敛到 `skills/development-transparency-protocol/SKILL.md`
+- `subagent-driven-development` 与 `test-driven-development` 只负责引用和执行，不再各自维护一套独立话术体系
 
 ## 四阶段准备链的架构职责
 
@@ -230,6 +236,36 @@
 | `25-contract/` | 契约固化产物 |
 | `skills/` | 本项目新增或增强的 skills |
 
+## 固定产物命名
+
+四阶段产物统一采用固定文件名：
+
+- `10-requirements/business_rules_memo.md`
+- `15-tech-selection/tech-selection.md`
+- `20-architecture/architecture.md`
+- `20-architecture/tasks.md`
+- `25-contract/test_contract.md`
+
+这样做的目的不是支持同目录并行多个需求实例，而是让当前这一轮目标物的阶段输入输出路径稳定、可预测、可断言。
+
+## Frontmatter 状态门禁
+
+每份阶段文档都应带统一 frontmatter，至少包含：
+
+```yaml
+doc_id: "business_rules_memo|tech_selection|architecture|tasks|test_contract"
+phase: "boundary-convergence|tech-selection|architecture-and-tasking|contract-solidification"
+artifact: "business_rules_memo|tech_selection|architecture|tasks|test_contract"
+status: "draft|in_review|approved|superseded"
+derived_from: []
+updated_at: "YYYY-MM-DD"
+```
+
+架构上的定位是：
+- 这是轻量状态断言，不是独立状态机服务
+- 它用于阶段放行前的显式检查
+- 它不能替代 Owner 审阅，但能显著降低流程跳转的随意性
+
 ## 数据与交接关系
 
 ```text
@@ -256,6 +292,7 @@
 - 四阶段未全部通过，不得进入 `using-git-worktrees`。
 - `Architecture` 的 task 分解不合格，不得放行。
 - `Contract` 不可验证，不得放行。
+- 上游文档未达到 `status: approved`，不得放行下一阶段。
 
 ### 执行门禁
 

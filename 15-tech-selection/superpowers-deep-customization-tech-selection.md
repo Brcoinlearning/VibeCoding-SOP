@@ -40,7 +40,7 @@
 | 审查机制 | 沿用子 Agent 双阶段审查，增加隔离要求 | 与原项目 `subagent-driven-development` 对齐 |
 | 透明化 | 通过 skill 指令层增加信息来源声明、改动预览、进度播报 | 不新增平台，直接增强现有交互协议 |
 | 文档格式 | Markdown | 与原项目完全一致 |
-| 状态记录 | 沿用文档和轻量状态文件思路，不引入新状态机系统 | 保守增强，避免系统漂移 |
+| 状态记录 | 沿用文档 frontmatter + 轻量状态断言，不引入新状态机系统 | 保守增强，避免系统漂移 |
 
 ## 运行结构选型
 
@@ -193,7 +193,48 @@
 
 - 原项目核心不是依赖复杂状态机，而是依赖技能流程约束
 - 当前需求只需要“Owner 可见”和“过程可追溯”，并不需要引入新的执行内核
-- 可以保留 `.sop_state/` 或类似轻量文件作为辅助，但它不是系统中心
+- 以文档 frontmatter 作为阶段状态的唯一权威来源即可，不必额外建设状态服务
+
+### 文件命名与 frontmatter 选型
+
+**选型**：固定产物文件名 + 统一 frontmatter
+
+**固定文件名**：
+- `10-requirements/business_rules_memo.md`
+- `15-tech-selection/tech-selection.md`
+- `20-architecture/architecture.md`
+- `20-architecture/tasks.md`
+- `25-contract/test_contract.md`
+
+**frontmatter 关键字段**：
+
+```yaml
+doc_id: "business_rules_memo|tech_selection|architecture|tasks|test_contract"
+phase: "boundary-convergence|tech-selection|architecture-and-tasking|contract-solidification"
+artifact: "business_rules_memo|tech_selection|architecture|tasks|test_contract"
+status: "draft|in_review|approved|superseded"
+derived_from: []
+updated_at: "YYYY-MM-DD"
+```
+
+**采用理由**：
+- 比 `<topic>` 占位路径更稳定
+- 便于阶段间显式断言上游是否已 `approved`
+- 不需要引入独立状态机或 Python orchestrator
+
+### 上下文读取策略选型
+
+**选型**：摘要优先读取，而不是默认读取上游全文。
+
+**规则**：
+- 先读 frontmatter
+- 再读摘要或关键章节
+- 只在当前问题需要时展开读取正文
+
+**采用理由**：
+- 控制上下文膨胀
+- 保持纯 Prompt / 文档方案的轻量化
+- 不必为了这一问题提前引入检索系统
 
 ## 待确认事项
 
@@ -201,6 +242,7 @@
 2. 四阶段前置分析链与 `brainstorming` 的边界如何表述最清晰，避免角色重叠。
 3. 透明化输出是否需要沉淀到固定模板文档，还是只保留会话协议要求。
 4. 是否需要为“高风险任务”单独定义更强审查模式，但这不应改变当前主运行骨架。
+5. 是否需要在全局规则中再补一条“正式开发必须遵循 transparency protocol”的总原则，以进一步减少遗忘风险。
 
 ## 结论
 
