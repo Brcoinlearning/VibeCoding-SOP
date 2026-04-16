@@ -11,8 +11,8 @@
 **项目名称**：Superpowers 深度定制版
 
 **基于**：
-- 业务规则备忘录 v3（10-requirements/superpowers-deep-customization-business_rules_memo.md）
-- 技术选型文档 v4（15-tech-selection/superpowers-deep-customization-tech-selection.md）
+- 业务规则备忘录（10-requirements/business_rules_memo.md）
+- 技术选型文档（15-tech-selection/tech-selection.md）
 
 **架构目标**：
 - 用四阶段准备链替代原项目前半主链

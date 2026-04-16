@@ -4,6 +4,15 @@
 
 本文档只定义**当前目标流程**的验收契约，不验证未来平台化实现，不假设独立 runtime orchestrator 已存在。
 
+## 上游输入
+
+- `10-requirements/business_rules_memo.md`
+- `15-tech-selection/tech-selection.md`
+- `20-architecture/architecture.md`
+- `20-architecture/tasks.md`
+
+进入本阶段时，上述上游文档都应已达到 `status: approved`。
+
 ## 契约范围
 
 本轮契约覆盖以下对象：
@@ -237,6 +246,9 @@ scenarios:
 ```
 
 这样做的目的不是引入新的执行平台，而是让后续自动化校验具备稳定锚点。
+
+## Feature 9：后半执行骨架保持与原项目一致
+
 ```gherkin
 Feature: 后半执行骨架保持与原项目一致
   作为架构设计者

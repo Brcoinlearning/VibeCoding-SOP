@@ -10,7 +10,7 @@
 
 **项目名称**：Superpowers 深度定制版
 
-**基于**：业务规则备忘录 v2（10-requirements/superpowers-deep-customization-business_rules_memo.md）
+**基于**：业务规则备忘录（10-requirements/business_rules_memo.md）
 
 **选型目标**：在不偏离原项目运行方式的前提下，给 superpowers 增加更强的需求分析前置、审查隔离约束与过程透明度。
 
@@ -18,14 +18,14 @@
 
 ### 原项目优先原则
 
-- 运行骨架优先沿用 `superpowers/README.md` 定义的工作流：`brainstorming -> using-git-worktrees -> writing-plans -> subagent-driven-development / executing-plans -> test-driven-development -> requesting-code-review -> finishing-a-development-branch`
+- 运行骨架优先沿用 `superpowers/README.md` 中已经验证过的后半执行能力：`using-git-worktrees -> subagent-driven-development / executing-plans -> test-driven-development -> requesting-code-review -> finishing-a-development-branch`
 - 组织载体优先沿用 `superpowers/skills/*/SKILL.md` 的技能体系，而不是新增独立编排平台
 - 交互入口优先沿用 skill 触发和已有命令语义，不把主流程迁移到 Python orchestrator 或独立脚本系统
 - 定制目标是“补前置阶段、加约束、提透明度”，不是替换原项目的主干执行链
 
 ### 本次定制的增强位点
 
-- 在 `brainstorming` / `writing-plans` 之前补强四阶段分析资产沉淀
+- 以前置四阶段分析资产沉淀替代原前半设计/计划主链
 - 在 `subagent-driven-development` / `test-driven-development` 的既有流程上增加透明度和隔离门禁要求
 - 在已有 `skills` 体系下做增量 skill 或 project override，不引入一套新的运行时抽象
 
@@ -35,7 +35,7 @@
 |------|------|----------|
 | 工作流主骨架 | 直接沿用 superpowers skills 工作流 | 原项目已验证，符合“沿用并增强” |
 | 需求前置阶段 | 新增/整理需求分析类 skill 文档编排 | 补 superpowers 原版在需求分析深度上的不足 |
-| 计划执行 | 沿用 `writing-plans` + `subagent-driven-development` / `executing-plans` | 与原项目命令和执行习惯一致 |
+| 计划执行 | 由 `Architecture` 直接产出 task，并沿用 `subagent-driven-development` / `executing-plans` 落地 | 保留原项目执行习惯，但不再依赖 `writing-plans` 作为主链 |
 | TDD 执行 | 沿用 `test-driven-development` | 保持原项目强约束，不另起流程 |
 | 审查机制 | 沿用子 Agent 双阶段审查，增加隔离要求 | 与原项目 `subagent-driven-development` 对齐 |
 | 透明化 | 通过 skill 指令层增加信息来源声明、改动预览、进度播报 | 不新增平台，直接增强现有交互协议 |
@@ -74,9 +74,9 @@
 
 | 目标能力 | 优先映射到的原项目能力 | 定制方式 |
 |------|--------------------|----------|
-| 需求澄清/方案讨论 | `brainstorming` | 前置补强，必要时新增需求分析 skill 与其衔接 |
+| 需求澄清/方案讨论 | `brainstorming` | 不再作为本目标流程主链，必要时仅作补充参考 |
 | 工作树隔离 | `using-git-worktrees` | 原样沿用 |
-| 实施计划 | `writing-plans` | 保留原格式，增强“引用四阶段产物”的要求 |
+| 实施计划 | `20-architecture/tasks.md` | 由 `Architecture` 阶段直接承担 task 来源职责 |
 | 子 Agent 执行 | `subagent-driven-development` | 增加透明度与隔离门禁 |
 | 批处理执行 | `executing-plans` | 原样保留为备选执行路径 |
 | TDD | `test-driven-development` | 增加文档期/透明化边界约束 |
@@ -93,15 +93,15 @@
 
 | 定制阶段 | 目标 | 与 superpowers 的衔接 |
 |------|------|--------------------|
-| 1. 边界收敛 | 形成业务规则备忘录 | 作为后续 brainstorm / planning 的稳定输入 |
-| 2. 技术选型 | 明确技术约束与复用策略 | 约束 `writing-plans` 的技术决策 |
-| 3. 架构拆解 | 形成任务边界与依赖 | 为 `writing-plans` 提供任务分解依据 |
+| 1. 边界收敛 | 形成业务规则备忘录 | 作为后续阶段的稳定输入 |
+| 2. 技术选型 | 明确技术约束与复用策略 | 约束后续架构与实现边界 |
+| 3. 架构拆解 | 形成任务边界与依赖 | 直接产出正式开发使用的 task 分解 |
 | 4. 契约固化 | 形成可测验收契约 | 为 `test-driven-development` 和审查提供依据 |
 
 ### 接入原则
 
-- 四阶段产物是对原项目设计输入的补强，不是对原项目设计/计划技能的替换
-- `writing-plans` 仍然负责输出最终可执行计划
+- 四阶段产物是当前目标流程的正式前置输入，而不是为 `writing-plans` 预热的过渡材料
+- `Architecture` 阶段直接输出正式开发所消费的 task 文档
 - `subagent-driven-development` 仍然负责逐任务调度与双阶段审查
 - `test-driven-development` 仍然是实现阶段唯一的编码纪律
 
@@ -239,7 +239,7 @@ updated_at: "YYYY-MM-DD"
 ## 待确认事项
 
 1. 哪些增强应直接改写原有 `superpowers` skill，哪些应以新增本地 skill 承载。
-2. 四阶段前置分析链与 `brainstorming` 的边界如何表述最清晰，避免角色重叠。
+2. 是否还需要为“补充 brainstorming”单独写一条非主链使用边界，避免后续误触发。
 3. 透明化输出是否需要沉淀到固定模板文档，还是只保留会话协议要求。
 4. 是否需要为“高风险任务”单独定义更强审查模式，但这不应改变当前主运行骨架。
 5. 是否需要在全局规则中再补一条“正式开发必须遵循 transparency protocol”的总原则，以进一步减少遗忘风险。

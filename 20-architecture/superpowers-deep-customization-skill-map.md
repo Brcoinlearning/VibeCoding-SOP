@@ -45,8 +45,10 @@ review 相关要求不能只停留在口头约定，必须落到 `SKILL.md` 与 
 | 类型 | Skill / 文档 | 处理方式 | 责任 |
 |------|--------------|----------|------|
 | 改写 | `superpowers/skills/using-git-worktrees` | 增强 | 接入四阶段放行门禁，成为正式开发入口 |
-| 改写 | `superpowers/skills/subagent-driven-development` | 增强 | 承载 task 执行、透明度协议、review 隔离 |
+| 改写 | `superpowers/skills/subagent-driven-development` | 增强 | 承载 task 执行、Owner 对齐、fresh implementer / fresh reviewer 隔离 |
 | 改写 | `superpowers/skills/test-driven-development` | 增强 | 保留 TDD 核心纪律，同时服从 Owner 可见性门禁 |
+| 改写 | `superpowers/skills/executing-plans` | 增强 | 作为 fallback 执行路径时仍服从透明度与独立 review 规则 |
+| 改写 | `superpowers/skills/requesting-code-review` | 增强 | 明确 reviewer 必须独立、fresh，且调用前对 Owner 可见 |
 | 改写 | `superpowers/skills/subagent-driven-development/implementer-prompt.md` | 增强 | 约束 implementer 的声明、预览、汇报格式 |
 | 改写 | `superpowers/skills/subagent-driven-development/spec-reviewer-prompt.md` | 增强 | 明确独立 reviewer、对抗性审查、禁止放水 |
 | 改写 | `superpowers/skills/subagent-driven-development/code-quality-reviewer-prompt.md` | 增强 | 明确独立 reviewer 与质量审查口径 |
@@ -82,7 +84,32 @@ review 相关要求不能只停留在口头约定，必须落到 `SKILL.md` 与 
 - implementer 启动前必须得到 Owner 对齐
 - reviewer 调用必须对 Owner 显式可见
 - implementer 不得自审自放行
+- spec reviewer 与 code quality reviewer 都必须是 fresh reviewer subagent
+- 修复后重新审查时不得复用旧 reviewer session
+- final review 若执行，也必须显式告知 Owner 并使用 fresh reviewer
 - 每个 task 结束后先汇报再进入下一 task
+
+### 2.1 `implementer-prompt.md`
+
+**增强点**：
+- implementer 只能实现，不具备 review 放行权
+- 必须显式交回 review handoff
+- 高风险或大范围改动先返回预览，不得直接写入
+
+### 2.2 `spec-reviewer-prompt.md`
+
+**增强点**：
+- reviewer 必须先执行 Isolation Check
+- 必须确认自己不是 implementer
+- 必须确认自己是当前 review pass 的 fresh reviewer
+- 必须确认 Owner 已被告知当前 review 调用
+
+### 2.3 `code-quality-reviewer-prompt.md`
+
+**增强点**：
+- reviewer 必须先执行 Isolation Check
+- 与 spec reviewer 一样要求 fresh reviewer 和 Owner 可见性
+- 输出中明确包含 Isolation Check 结果
 
 ### 3. `test-driven-development`
 
@@ -95,6 +122,27 @@ review 相关要求不能只停留在口头约定，必须落到 `SKILL.md` 与 
 - 将透明度门禁嵌入开始写入前
 - 高风险改动下要求先给 Owner 看预览
 - 强调 TDD 是 implementer 的内部纪律，不替代 reviewer 隔离
+
+### 4. `executing-plans`
+
+**保留部分**：
+- 作为无 subagent 优势场景下的 fallback 执行路径
+- 批次执行与阶段性汇报
+
+**增强部分**：
+- 进入前仍需确认四阶段与 `using-git-worktrees` 已完成
+- 每个 task 或 batch 仍需向 Owner 说明读取文档、目标与预计改动范围
+- 不得因 fallback 路径而跳过独立 review 与透明度协议
+
+### 5. `requesting-code-review`
+
+**保留部分**：
+- 继续沿用原项目 code reviewer 能力
+
+**增强部分**：
+- review 调用前必须对 Owner 可见
+- reviewer 必须不是 implementer
+- 修复后重新 review 时也必须 fresh dispatch
 
 ## 新增项说明
 
@@ -163,9 +211,21 @@ review 相关要求不能只停留在口头约定，必须落到 `SKILL.md` 与 
 2. 改 subagent-driven-development
 3. 改 test-driven-development
 4. 改 implementer / reviewer prompt
-5. 补 development-transparency-protocol
-6. 再补四阶段 skill
+5. 改 executing-plans 与 requesting-code-review 两条旁路
+6. 补 development-transparency-protocol
+7. 再补四阶段 skill
 ```
+
+## 当前实现状态
+
+- `using-git-worktrees`：已补正式开发入口与四阶段门禁
+- `subagent-driven-development`：已补 Owner 对齐、fresh reviewer、final review 可见性
+- `test-driven-development`：已补透明度预览门禁
+- `executing-plans`：已补 fallback 路径透明度与独立 review 约束
+- `requesting-code-review`：已补 Owner 可见与 reviewer 独立约束
+- implementer / reviewer prompts：已补 isolation check 与 review handoff
+- 四阶段 skills：已完成首版
+- `development-transparency-protocol`：已完成首版
 
 ## 本轮不做
 
