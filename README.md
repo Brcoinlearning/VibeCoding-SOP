@@ -141,11 +141,24 @@ Boundary Convergence
 
 相对 `superpowers` 的关键改写点在这里：
 
-- [superpowers/skills/using-git-worktrees/SKILL.md](/Users/mr.hu/Desktop/开发项目/软件开发SOP/superpowers/skills/using-git-worktrees/SKILL.md)
-- [superpowers/skills/subagent-driven-development/SKILL.md](/Users/mr.hu/Desktop/开发项目/软件开发SOP/superpowers/skills/subagent-driven-development/SKILL.md)
-- [superpowers/skills/test-driven-development/SKILL.md](/Users/mr.hu/Desktop/开发项目/软件开发SOP/superpowers/skills/test-driven-development/SKILL.md)
-- [superpowers/skills/requesting-code-review/SKILL.md](/Users/mr.hu/Desktop/开发项目/软件开发SOP/superpowers/skills/requesting-code-review/SKILL.md)
-- [superpowers/skills/executing-plans/SKILL.md](/Users/mr.hu/Desktop/开发项目/软件开发SOP/superpowers/skills/executing-plans/SKILL.md)
+- [skills/using-git-worktrees/SKILL.md](/Users/mr.hu/Desktop/开发项目/软件开发SOP/skills/using-git-worktrees/SKILL.md)
+- [skills/subagent-driven-development/SKILL.md](/Users/mr.hu/Desktop/开发项目/软件开发SOP/skills/subagent-driven-development/SKILL.md)
+- [skills/test-driven-development/SKILL.md](/Users/mr.hu/Desktop/开发项目/软件开发SOP/skills/test-driven-development/SKILL.md)
+- [skills/requesting-code-review/SKILL.md](/Users/mr.hu/Desktop/开发项目/软件开发SOP/skills/requesting-code-review/SKILL.md)
+- [skills/executing-plans/SKILL.md](/Users/mr.hu/Desktop/开发项目/软件开发SOP/skills/executing-plans/SKILL.md)
+
+与单一主仓库重组直接相关的文档在这里：
+
+- [20-architecture/repository-restructure-plan.md](/Users/mr.hu/Desktop/开发项目/软件开发SOP/20-architecture/repository-restructure-plan.md)
+- [20-architecture/superpowers-absorption-map.md](/Users/mr.hu/Desktop/开发项目/软件开发SOP/20-architecture/superpowers-absorption-map.md)
+- [20-architecture/target-repository-layout.md](/Users/mr.hu/Desktop/开发项目/软件开发SOP/20-architecture/target-repository-layout.md)
+- [20-architecture/repository-migration-sequence.md](/Users/mr.hu/Desktop/开发项目/软件开发SOP/20-architecture/repository-migration-sequence.md)
+
+与平台接入直接相关的文档在这里：
+
+- [.codex/INSTALL.md](/Users/mr.hu/Desktop/开发项目/软件开发SOP/.codex/INSTALL.md)
+- [codex-usage.md](/Users/mr.hu/Desktop/开发项目/软件开发SOP/docs/platforms/codex-usage.md)
+- [codex-minimum-shipping-scope.md](/Users/mr.hu/Desktop/开发项目/软件开发SOP/docs/platforms/codex-minimum-shipping-scope.md)
 
 ## 后续方向
 
