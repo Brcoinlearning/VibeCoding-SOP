@@ -21,67 +21,28 @@ When the controlling plan states **"SKILL.md/documentation-only phase"**, all di
 
 **Core principle:** Fresh implementer per task + fresh reviewer per review gate + project transparency protocol = controlled execution.
 
-## Subagent Dispatch Tool Contract
+## Platform Dispatch Gate
 
-This project relies on the platform's subagent tools. The controller must treat tool-call formatting as a hard execution gate, not as an implementation detail.
+This skill defines the workflow, not the low-level platform payload shape.
 
-### Required rule
+Platform-specific subagent invocation details must live in the corresponding platform documentation, not in this workflow skill.
 
-When calling `spawn_agent` or `send_input`, provide **exactly one** of the following:
+For Codex-specific dispatch notes, see:
 
-- `message`
-- `items`
+- `docs/platforms/codex-usage.md`
 
-Never provide both in the same tool call.
+### Required gate
 
-### Project-safe default
+If the current platform or current session cannot successfully launch a fresh implementer or reviewer subagent, then standard SDD has **not started yet**.
 
-Unless there is a concrete need for structured mentions or images, use **`message` only**.
+In that situation, the controller must:
 
-That means:
+1. report to the Owner that subagent dispatch is blocked at the platform layer
+2. state clearly that the implementer/reviewer has not actually started
+3. avoid claiming that implementation or review is already in progress
+4. wait for the Owner to choose the next action
 
-- put the full subagent instructions in `message`
-- omit the `items` field entirely from the request structure
-- do not attach duplicate text in `items`
-- do not try to split the same prompt across `message` and `items`
-
-Likewise, when using an `items`-based dispatch, omit the `message` field entirely.
-
-### Why this matters
-
-If both fields are present with meaningful content, the subagent may fail to start and the task has **not** entered true SDD execution yet.
-
-In that situation, do not pretend the implementer or reviewer was dispatched.
-
-### Dispatch recovery rule
-
-If `spawn_agent` returns an input-shape error such as:
-
-- `Provide either message or items, but not both`
-
-then the controller must:
-
-1. report to the Owner that dispatch failed before the subagent actually started
-2. correct the tool payload
-3. retry with a single-channel payload
-4. only after successful dispatch announce that the fresh implementer/reviewer is actually running
-
-Do not blur together:
-
-- prompt design failure
-- subagent launch success
-
-These are separate states and must be reported separately.
-
-### Recommended dispatch pattern
-
-For implementer, spec reviewer, and code quality reviewer dispatches in this project, prefer:
-
-- `message`: populated with the fully rendered prompt
-- `items`: omitted entirely
-- `fork_context`: `false` unless the task explicitly requires inheriting the current thread
-
-Only use `items`-based dispatch when structured mentions are actually necessary.
+Do not treat a dispatch attempt as equivalent to a successful fresh subagent launch.
 
 ## Required task completion artifact
 

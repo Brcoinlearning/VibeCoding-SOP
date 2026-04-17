@@ -6,10 +6,8 @@ Use this template when dispatching a spec compliance reviewer subagent.
 
 Controller dispatch note:
 
-- Render the review prompt as one plain-text payload.
-- Call the subagent tool with `message` only unless structured `items` are strictly necessary.
-- Never send duplicated prompt content through both `message` and `items`.
-- If dispatch fails, report that reviewer launch failed; do not treat review as started.
+- Render and send this prompt according to the active platform's subagent dispatch rules.
+- If dispatch fails at the platform layer, report that reviewer launch failed and do not treat review as started.
 
 **Isolation rule:** You are not the implementer. Review as a fresh adversarial subagent. Do not defer to implementer intent or optimism.
 

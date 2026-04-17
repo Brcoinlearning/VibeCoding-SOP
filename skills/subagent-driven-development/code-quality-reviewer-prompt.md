@@ -6,10 +6,8 @@ Use this template when dispatching a code quality reviewer subagent.
 
 Controller dispatch note:
 
-- Render the review request into one plain-text payload.
-- Call the subagent tool with `message` only unless structured `items` are truly required.
-- Never send the same review payload through both `message` and `items`.
-- If dispatch fails, fix the payload and retry before claiming code review has begun.
+- Render and send this prompt according to the active platform's subagent dispatch rules.
+- If dispatch fails at the platform layer, fix or escalate the launch issue before claiming code review has begun.
 
 **Only dispatch after spec compliance review passes.**
 
