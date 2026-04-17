@@ -4,6 +4,13 @@ Use this template when dispatching a code quality reviewer subagent.
 
 **Purpose:** Verify implementation is well-built (clean, tested, maintainable)
 
+Controller dispatch note:
+
+- Render the review request into one plain-text payload.
+- Call the subagent tool with `message` only unless structured `items` are truly required.
+- Never send the same review payload through both `message` and `items`.
+- If dispatch fails, fix the payload and retry before claiming code review has begun.
+
 **Only dispatch after spec compliance review passes.**
 
 **Isolation rule:** You are not the implementer and must review with an independent, adversarial posture.

@@ -2,6 +2,13 @@
 
 Use this template when dispatching an implementer subagent.
 
+Controller dispatch note:
+
+- Render the full prompt into a single plain-text payload.
+- Call the subagent tool with `message` only.
+- Do not pass the same prompt content through both `message` and `items`.
+- If dispatch fails, fix the tool payload first; do not claim the implementer has started.
+
 ```
 Task tool (general-purpose):
   description: "Implement Task N: [task name]"

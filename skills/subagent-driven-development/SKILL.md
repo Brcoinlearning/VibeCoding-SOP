@@ -7,7 +7,7 @@ description: Use when executing implementation plans with independent tasks in t
 
 Execute the post-worktree task stream by dispatching a fresh implementer subagent per task, followed by independent review after each task: spec compliance first, then code quality.
 
-In this project, this skill starts only after the four-stage preparation chain is complete and `using-git-worktrees` has established the implementation workspace.
+In this project, this skill starts only after the four-stage preparation chain is complete, `using-git-worktrees` has established the implementation workspace, and the Owner has explicitly chosen `subagent-driven-development` as the formal execution path.
 
 ## Execution Boundaries (Project Override)
 
@@ -20,6 +20,78 @@ When the controlling plan states **"SKILL.md/documentation-only phase"**, all di
 **Why subagents:** You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
 
 **Core principle:** Fresh implementer per task + fresh reviewer per review gate + project transparency protocol = controlled execution.
+
+## Subagent Dispatch Tool Contract
+
+This project relies on the platform's subagent tools. The controller must treat tool-call formatting as a hard execution gate, not as an implementation detail.
+
+### Required rule
+
+When calling `spawn_agent` or `send_input`, provide **exactly one** of the following:
+
+- `message`
+- `items`
+
+Never provide both in the same tool call.
+
+### Project-safe default
+
+Unless there is a concrete need for structured mentions or images, use **`message` only**.
+
+That means:
+
+- put the full subagent instructions in `message`
+- omit the `items` field entirely from the request structure
+- do not attach duplicate text in `items`
+- do not try to split the same prompt across `message` and `items`
+
+Likewise, when using an `items`-based dispatch, omit the `message` field entirely.
+
+### Why this matters
+
+If both fields are present with meaningful content, the subagent may fail to start and the task has **not** entered true SDD execution yet.
+
+In that situation, do not pretend the implementer or reviewer was dispatched.
+
+### Dispatch recovery rule
+
+If `spawn_agent` returns an input-shape error such as:
+
+- `Provide either message or items, but not both`
+
+then the controller must:
+
+1. report to the Owner that dispatch failed before the subagent actually started
+2. correct the tool payload
+3. retry with a single-channel payload
+4. only after successful dispatch announce that the fresh implementer/reviewer is actually running
+
+Do not blur together:
+
+- prompt design failure
+- subagent launch success
+
+These are separate states and must be reported separately.
+
+### Recommended dispatch pattern
+
+For implementer, spec reviewer, and code quality reviewer dispatches in this project, prefer:
+
+- `message`: populated with the fully rendered prompt
+- `items`: omitted entirely
+- `fork_context`: `false` unless the task explicitly requires inheriting the current thread
+
+Only use `items`-based dispatch when structured mentions are actually necessary.
+
+## Required task completion artifact
+
+After each task passes implementation and both review gates, the controller must produce an Owner-facing completion document under:
+
+- `30-progress/T<n>-completion.md`
+
+Where `<n>` is the task sequence number from the current execution stream.
+
+This document is not optional summary prose in chat. It is a required progress artifact that the Owner can inspect before the next task proceeds.
 
 ## When to Use
 
@@ -41,11 +113,19 @@ digraph when_to_use {
 }
 ```
 
-**vs. Executing Plans (parallel session):**
+**vs. Executing Plans (Owner-selected alternate path):**
 - Same session (no context switch)
 - Fresh subagent per task (no context pollution)
 - Two-stage review after each task: spec compliance first, then code quality
-- Faster iteration (no human-in-loop between tasks)
+- Better fit when the Owner wants per-task fresh implementer/reviewer isolation inside the current session
+
+Do not present this skill as the automatic default after `using-git-worktrees`.
+
+The correct sequence is:
+
+1. `using-git-worktrees` prepares the isolated workspace
+2. Owner chooses the formal execution path
+3. If the choice is `subagent-driven-development`, this skill begins
 
 ## The Process
 
@@ -70,6 +150,7 @@ digraph process {
         "Code quality reviewer subagent approves?" [shape=diamond];
         "Implementer subagent fixes quality issues" [shape=box];
         "Summarize task outcome to Owner" [shape=box];
+        "Write 30-progress/T<n>-completion.md" [shape=box];
         "Mark task complete in TodoWrite" [shape=box];
     }
 
@@ -97,7 +178,8 @@ digraph process {
     "Code quality reviewer subagent approves?" -> "Implementer subagent fixes quality issues" [label="no"];
     "Implementer subagent fixes quality issues" -> "Dispatch fresh code quality reviewer subagent (./code-quality-reviewer-prompt.md)" [label="re-review"];
     "Code quality reviewer subagent approves?" -> "Summarize task outcome to Owner" [label="yes"];
-    "Summarize task outcome to Owner" -> "Mark task complete in TodoWrite";
+    "Summarize task outcome to Owner" -> "Write 30-progress/T<n>-completion.md";
+    "Write 30-progress/T<n>-completion.md" -> "Mark task complete in TodoWrite";
     "Mark task complete in TodoWrite" -> "More tasks remain?";
     "More tasks remain?" -> "Dispatch implementer subagent (./implementer-prompt.md)" [label="yes"];
     "More tasks remain?" -> "Announce final review to Owner" [label="no"];
@@ -153,7 +235,8 @@ Minimum enforcement in this skill:
 2. Before dispatching the implementer, controller must explicitly announce that a fresh implementer subagent will be used.
 3. Before each reviewer dispatch, controller must make reviewer invocation visible to the Owner.
 4. Before the next task starts, controller must summarize task outcome to the Owner.
-5. For high-risk or wide-scope tasks, controller must enforce preview-before-write.
+5. Before the next task starts, controller must write the corresponding `30-progress/T<n>-completion.md` artifact.
+6. For high-risk or wide-scope tasks, controller must enforce preview-before-write.
 
 ## Review Isolation Protocol
 
@@ -176,7 +259,8 @@ Controller checklist per task:
 3. Refuse any implementer attempt to self-approve.
 4. Announce the fresh spec reviewer before dispatch.
 5. Announce the fresh code quality reviewer before dispatch.
-6. Only then mark the task complete.
+6. Write `30-progress/T<n>-completion.md` before moving on.
+7. Only then mark the task complete.
 
 Reviewer-facing announcement wording should follow `development-transparency-protocol` instead of inventing new local templates here.
 

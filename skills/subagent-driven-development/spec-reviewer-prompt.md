@@ -4,6 +4,13 @@ Use this template when dispatching a spec compliance reviewer subagent.
 
 **Purpose:** Verify implementer built what was requested (nothing more, nothing less)
 
+Controller dispatch note:
+
+- Render the review prompt as one plain-text payload.
+- Call the subagent tool with `message` only unless structured `items` are strictly necessary.
+- Never send duplicated prompt content through both `message` and `items`.
+- If dispatch fails, report that reviewer launch failed; do not treat review as started.
+
 **Isolation rule:** You are not the implementer. Review as a fresh adversarial subagent. Do not defer to implementer intent or optimism.
 
 This review must be performed by a newly dispatched reviewer subagent for this review pass. If you were previously used as the implementer or as an earlier reviewer session for this same pass, stop and report isolation failure.
